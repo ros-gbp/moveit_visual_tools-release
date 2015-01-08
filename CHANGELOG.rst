@@ -2,6 +2,34 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+2.2.0 (2015-01-07)
+------------------
+* Code cleanup
+* Improved naming
+* Joint model bug fix
+* Improved speed of sending collision objects to Rviz
+  Added Manual planning scene update mode
+  Ability to apply colors to all collision objects (YAY)
+  API: removed removeAllCollisionObjectsPS function
+  Removed loadPlanningPub() function
+  Removed publishRemoveAllCollisionObjects() function
+* Added backwards compatibile loadCollisionSceneFromFile()
+* New publishCollisionRectangle function
+  API: Changed loadCollisionSceneFromFile() to accept a pose instead of x,y
+* Fix for renamed function
+* New publishWorkspaceParameters() function
+* Added ability to publish robot states with color
+* Fixed install method
+* Merge pull request `#5 <https://github.com/davetcoleman/moveit_visual_tools/issues/5>`_ from robomakery/feature/fix-collision-objects-test
+* Fixes for missing declarations in collision_objects_test.cpp
+* Refactored how collision ojects are published
+  Created new collision objects test and roslaunch file
+  Optimized header file
+  Removed loadCollisionPub() function
+  Fixed publishCollisionFloor
+  Added publishCollisionRectangle
+* Contributors: Dave Coleman, Dylan Vaughn
+
 2.1.0 (2014-10-31)
 ------------------
 * Fix for upstream change of RvizVisualTools
@@ -30,7 +58,7 @@ Changelog for package moveit_visual_tools
 1.3.0 (2014-09-17)
 ------------------
 * Added new getRandColor() function
-* Added TRANSLUCENT2 color
+* Added TRANSLUCENT color
 * Added two new publishSphere() functions
 * New convertPointToPose function
 * Reduced sleep timer for starting all publishers from 0.5 seconds to 0.2 seconds

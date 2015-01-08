@@ -43,6 +43,9 @@
 // For visualizing things in rviz
 #include <moveit_visual_tools/moveit_visual_tools.h>
 
+// MoveIt
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+
 namespace moveit_visual_tools
 {
 
@@ -61,6 +64,9 @@ private:
   // For visualizing things in rviz
   moveit_visual_tools::MoveItVisualToolsPtr visual_tools_;
 
+  // MoveIt Components
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
+
 public:
 
   /**
@@ -69,14 +75,14 @@ public:
   VisualToolsTest()
   {
     visual_tools_.reset(new moveit_visual_tools::MoveItVisualTools("base","/moveit_visual_tools"));
+    visual_tools_->loadPlanningSceneMonitor();
 
     // Allow time to publish messages
+    ros::spinOnce();
     ros::Duration(1.0).sleep();
 
-    while (ros::ok())
-    {
-      visual_tools_->publishTests();
-    }
+    // Run through test
+    visual_tools_->publishCollisionTests();
   }
 
   /**
@@ -84,6 +90,40 @@ public:
    */
   ~VisualToolsTest()
   {
+  }
+
+  bool loadPlanningSceneMonitor()
+  {
+    // Allows us to sycronize to Rviz and also publish collision objects to ourselves
+    ROS_DEBUG_STREAM_NAMED("r2_demos","Loading Planning Scene Monitor");
+    planning_scene_monitor_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, boost::shared_ptr<tf::Transformer>()));
+    ros::spinOnce();
+    ros::Duration(0.5).sleep();
+
+    if (planning_scene_monitor_->getPlanningScene())
+    {
+      // Optional monitors to start:
+      bool use_octomap_monitor = false; // this prevents a /tf warning
+      planning_scene_monitor_->startWorldGeometryMonitor(planning_scene_monitor::PlanningSceneMonitor::DEFAULT_COLLISION_OBJECT_TOPIC,
+                                                         planning_scene_monitor::PlanningSceneMonitor::DEFAULT_PLANNING_SCENE_WORLD_TOPIC,
+                                                         use_octomap_monitor);
+      //planning_scene_monitor_->startSceneMonitor("/move_group/monitored_planning_scene");
+      //planning_scene_monitor_->startStateMonitor("/joint_states", "/attached_collision_object");
+      planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
+                                                            "/planning_scene");
+    }
+    else
+    {
+      ROS_ERROR_STREAM_NAMED("r2_demos","Planning scene not configured");
+      return false;
+    }
+    ros::spinOnce();
+    ros::Duration(0.1).sleep();
+    ros::spinOnce();
+
+    visual_tools_->setPlanningSceneMonitor(planning_scene_monitor_);
+
+    return true;
   }
 
 }; // end class
