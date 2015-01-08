@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2013, University of Colorado, Boulder
+ *  Copyright (c) 2015, University of Colorado, Boulder
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -37,7 +37,6 @@
  *          and MoveIt! collision objects. Very useful for debugging complex software
  *
  *          See README.md for developers notes.
- *
  */
 
 #ifndef MOVEIT_VISUAL_TOOLS__MOVEIT_VISUAL_TOOLS_H_
@@ -48,12 +47,14 @@
 
 // MoveIt
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
-#include <moveit_msgs/Grasp.h>
-#include <moveit_msgs/DisplayRobotState.h>
 #include <moveit/macros/deprecation.h>
 
-// Messages
-//#include <geometry_msgs/Polygon.h>
+// MoveIt Messages
+#include <moveit_msgs/Grasp.h>
+#include <moveit_msgs/DisplayRobotState.h>
+#include <moveit_msgs/WorkspaceParameters.h>
+
+// ROS Messages
 #include <trajectory_msgs/JointTrajectory.h>
 
 namespace moveit_visual_tools
@@ -72,10 +73,8 @@ class MoveItVisualTools : public rviz_visual_tools::RvizVisualTools
 protected:
 
   // ROS publishers
-  ros::Publisher pub_collision_obj_; // for MoveIt collision objects
   ros::Publisher pub_attach_collision_obj_; // for MoveIt attached objects
   ros::Publisher pub_display_path_; // for MoveIt trajectories
-  ros::Publisher pub_planning_scene_diff_; // for adding and removing collision objects
   ros::Publisher pub_robot_state_; // publish a RobotState message
 
   // Pointer to a Planning Scene Monitor
@@ -88,12 +87,17 @@ protected:
   geometry_msgs::Pose grasp_pose_to_eef_pose_; // Convert generic grasp pose to this end effector's frame of reference
   std::vector<geometry_msgs::Pose> marker_poses_;
 
-  // MoveIt cached markers
-  moveit_msgs::DisplayRobotState display_robot_msg_;
+  // Cached robot state marker - cache the colored links. 
+  // Note: Only allows colors provided in rviz_visual_tools to prevent too many robot state messages from being loaded
+  // and ensuring efficiency
+  std::map<rviz_visual_tools::colors, moveit_msgs::DisplayRobotState> display_robot_msgs_;
 
-  // MoveIt cached objects
+  // Cached objects
   robot_state::RobotStatePtr shared_robot_state_; // Note: call loadSharedRobotState() before using this
   robot_state::RobotModelConstPtr robot_model_;
+
+  // Prevent the planning scene from always auto-pushing, but rather do it manually
+  bool mannual_trigger_update_;
 
 public:
 
@@ -101,8 +105,8 @@ public:
    * \brief Constructor
    * \param base_frame - common base for all visualization markers, usually "/world" or "/odom"
    * \param marker_topic - rostopic to publish markers to - your Rviz display should match
-   * \param planning_scene_monitor - optionally pass in a pre-loaded planning scene monitor to avoid having to re-load
-   *        the URDF, kinematic solvers, etc
+   * \param planning_scene_monitor - optionally pass in a pre-loaded planning scene monitor to 
+   *        avoid having to re-load the URDF, kinematic solvers, etc
    */
   MoveItVisualTools(const std::string& base_frame,
               const std::string& marker_topic,
@@ -130,18 +134,19 @@ public:
   bool loadPlanningSceneMonitor();
 
   /**
-   * \brief Publish any collision object to the planning scene
-   * \param collision object message
-   * \return true on success
-   */
-  bool publishCollisionObjectMsg(moveit_msgs::CollisionObject msg);
-
-  /**
    * \brief Skip a ROS message call by sending directly to planning scene monitor
    * \param collision object message
+   * \param color to set the collision object as
    * \return true on success
    */
-  bool processCollisionObjectMsg(moveit_msgs::CollisionObject msg);
+  bool processCollisionObjectMsg(const moveit_msgs::CollisionObject& msg, 
+                                 const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
+
+  /**
+   * \brief When mannual_trigger_update_ is true, use this to tell the planning scene to send
+   *        an update out. Do not use otherwise
+   */
+  bool triggerPlanningSceneUpdate();
 
   /**
    * \brief Load robot state only as needed
@@ -172,9 +177,7 @@ public:
   /**
    * \brief Load publishers as needed
    */
-  void loadCollisionPub();
   void loadAttachedPub();
-  void loadPlanningPub();
   void loadTrajectoryPub();
   void loadRobotStatePub(const std::string &marker_topic = DISPLAY_ROBOT_STATE_TOPIC);
 
@@ -188,11 +191,21 @@ public:
   }
 
   /**
+   * \brief Prevent the planning scene from always auto-pushing, but rather do it manually
+   * \param bool true to enable manual mode
+   */
+  void setManualSceneUpdating(bool enable_manual)
+  {
+    mannual_trigger_update_ = enable_manual;
+  }
+
+  /**
    * \brief Publish an end effector to rviz
    * \param pose - the location to publish the marker with respect to the base frame
    * \return true on success
    */
-  bool publishEEMarkers(const geometry_msgs::Pose &pose, const rviz_visual_tools::colors &color = rviz_visual_tools::WHITE, const std::string &ns="end_effector");
+  bool publishEEMarkers(const geometry_msgs::Pose &pose, const rviz_visual_tools::colors &color = 
+                        rviz_visual_tools::WHITE, const std::string &ns="end_effector");
 
   /**
    * \brief Show grasps generated from moveit_simple_grasps or other MoveIt Grasp message sources
@@ -232,29 +245,18 @@ public:
 
   /**
    * \brief Remove all collision objects that this class has added to the MoveIt! planning scene
-   *        Communicates to a remote move_group node through a ROS message
-   * \return true on sucess
-   */
-  MOVEIT_DEPRECATED bool removeAllCollisionObjects()
-  {
-    publishRemoveAllCollisionObjects();
-  }
-  bool publishRemoveAllCollisionObjects();
-
-  /**
-   * \brief Remove all collision objects that this class has added to the MoveIt! planning scene
    *        Communicates directly to a planning scene monitor e.g. if this is the move_group node
    * \param  the scene to directly clear the collision objects from
    * \return true on sucess
    */
-  bool removeAllCollisionObjectsPS();
+  bool removeAllCollisionObjects();
 
   /**
    * \brief Remove a collision object from the planning scene
    * \param Name of object
    * \return true on sucess
    */
-  bool cleanupCO(std::string name);
+  bool cleanupCO(const std::string& name);
 
   /**
    * \brief Remove an active collision object from the planning scene
@@ -277,7 +279,8 @@ public:
    * \param name of floor
    * \return true on success
    */
-  bool publishCollisionFloor(double z, std::string plane_name);
+  bool publishCollisionFloor(double z = 0.0, const std::string& plane_name = "Floor",
+                             const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Create a MoveIt Collision block at the given pose
@@ -286,7 +289,20 @@ public:
    * \param size - height=width=depth=size
    * \return true on sucess
    **/
-  bool publishCollisionBlock(geometry_msgs::Pose block_pose, std::string block_name, double block_size);
+  bool publishCollisionBlock(const geometry_msgs::Pose& block_pose, const std::string& block_name, double block_size,
+                             const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
+
+  /**
+   * \brief Create a MoveIt Collision block at the given pose
+   * \param point1 - top left of rectangle
+   * \param point2 - bottom right of rectangle
+   * \param name - semantic name of MoveIt collision object
+   * \return true on sucess
+   **/
+  bool publishCollisionRectangle(const Eigen::Vector3d &point1, const Eigen::Vector3d &point2, 
+                                 const std::string& block_name, const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
+  bool publishCollisionRectangle(const geometry_msgs::Point &point1, const geometry_msgs::Point &point2, 
+                                 const std::string& block_name, const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Create a MoveIt Collision cylinder between two points
@@ -296,8 +312,12 @@ public:
    * \param radius - size of cylinder
    * \return true on sucess
    */
-  bool publishCollisionCylinder(geometry_msgs::Point a, geometry_msgs::Point b, std::string object_name, double radius);
-  bool publishCollisionCylinder(Eigen::Vector3d a, Eigen::Vector3d b, std::string object_name, double radius);
+  bool publishCollisionCylinder(const geometry_msgs::Point &a, const geometry_msgs::Point &b, 
+                                const std::string& object_name, double radius, const rviz_visual_tools::colors &color = 
+                                rviz_visual_tools::GREEN);
+  bool publishCollisionCylinder(const Eigen::Vector3d &a, const Eigen::Vector3d &b, 
+                                const std::string& object_name, double radius, const rviz_visual_tools::colors &color = 
+                                rviz_visual_tools::GREEN);
 
   /**
    * \brief Create a MoveIt Collision cylinder with a center point pose
@@ -307,8 +327,10 @@ public:
    * \param height - size of cylinder
    * \return true on sucess
    */
-  bool publishCollisionCylinder(Eigen::Affine3d object_pose, std::string object_name, double radius, double height);
-  bool publishCollisionCylinder(geometry_msgs::Pose object_pose, std::string object_name, double radius, double height);
+  bool publishCollisionCylinder(const Eigen::Affine3d& object_pose, const std::string& object_name, double radius, double height,
+                                const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
+  bool publishCollisionCylinder(const geometry_msgs::Pose& object_pose, const std::string& object_name, double radius, double height,
+                                const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Publish a connected birectional graph
@@ -316,7 +338,8 @@ public:
    * \param name of collision object
    * \return true on sucess
    */
-  bool publishCollisionGraph(const graph_msgs::GeometryGraph &graph, const std::string &object_name, double radius);
+  bool publishCollisionGraph(const graph_msgs::GeometryGraph &graph, const std::string &object_name, double radius,
+                             const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Helper for publishCollisionWall
@@ -333,7 +356,8 @@ public:
    * \param name
    * \return true on sucess
    */
-  bool publishCollisionWall(double x, double y, double angle, double width, const std::string name);
+  bool publishCollisionWall(double x, double y, double angle, double width, const std::string name,
+                            const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Publish a typical room table
@@ -347,15 +371,30 @@ public:
    * \return true on sucess
    */
   bool publishCollisionTable(double x, double y, double angle, double width, double height,
-                             double depth, const std::string name);
+                             double depth, const std::string name, const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
    * \brief Load a planning scene to a planning_scene_monitor from file
    * \param path - path to planning scene, e.g. as exported from Rviz Plugin
-   * \param planning scene monitor that is already setup
+   * \param offset for scene to be placed
    * \return true on success
    */
-  bool loadCollisionSceneFromFile(const std::string &path, double x_offset = 0, double y_offset = 0);
+  bool loadCollisionSceneFromFile(const std::string &path);
+  bool loadCollisionSceneFromFile(const std::string &path, const Eigen::Affine3d &offset);
+
+  /**
+   * \brief Simple tests for collision testing
+   * \return true on success
+   */
+  bool publishCollisionTests();
+
+  /**
+   * \brief Display size of workspace used for planning with OMPL, etc. Important for virtual joints
+   * \param input - description
+   * \param input - description
+   * \return true on sucess
+   */
+  bool publishWorkspaceParameters(const moveit_msgs::WorkspaceParameters& params);
 
   /**
    * \brief Move a joint group in MoveIt for visualization
@@ -364,11 +403,11 @@ public:
    *  This will be displayed in the Planned Path section of the MoveIt Rviz plugin
    *
    * \param trajectory_pts - a single joint configuration
-   * \param group_name - the MoveIt planning group the trajectory applies to
+   * \param planning_group - the MoveIt planning group the trajectory applies to
    * \param display_time - amount of time for the trajectory to "execute"
    * \return true on success
    */
-  bool publishTrajectoryPoint(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt, const std::string &group_name,
+  bool publishTrajectoryPoint(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt, const std::string &planning_group,
                               double display_time = 0.1);
 
   /**
@@ -383,17 +422,22 @@ public:
   /**
    * \brief Publish a complete robot state to Rviz
    *        To use, add a RobotState marker to Rviz and subscribe to the DISPLAY_ROBOT_STATE_TOPIC, above
-   * \param robot_state
+   * \param robot_state - joint values of robot
+   * \param color - how to highlight the robot (solid-ly) if desired, 
+   *                by default leaves robot in color as specified in URDF
    */
-  bool publishRobotState(const robot_state::RobotState &robot_state);
-  bool publishRobotState(const robot_state::RobotStatePtr &robot_state);
+  bool publishRobotState(const robot_state::RobotState &robot_state, 
+                         const rviz_visual_tools::colors &color = rviz_visual_tools::DEFAULT);
+  bool publishRobotState(const robot_state::RobotStatePtr &robot_state, 
+                         const rviz_visual_tools::colors &color = rviz_visual_tools::DEFAULT);
 
   /**
    * \brief Publish a MoveIt robot state to a topic that the Rviz "RobotState" display can show
-   * \param robot_state
+   * \param trajectory_pt
+   * \param planning_group - group corresponding to trajectory pt
    * \return true on success
    */
-  bool publishRobotState(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt, const std::string &group_name);
+  bool publishRobotState(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt, const std::string &planning_group);
 
   /**
    * \brief Fake removing a Robot State display in Rviz by simply moving it very far away
