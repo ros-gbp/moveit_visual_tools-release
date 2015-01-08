@@ -1,7 +1,7 @@
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
- *  Copyright (c) 2014, University of Colorado, Boulder
+ *  Copyright (c) 2015, University of Colorado, Boulder
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -59,7 +59,8 @@ MoveItVisualTools::MoveItVisualTools(const std::string& base_frame,
                                      const std::string& marker_topic,
                                      planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor)
   :  RvizVisualTools::RvizVisualTools(base_frame, marker_topic),
-     planning_scene_monitor_(planning_scene_monitor)
+     planning_scene_monitor_(planning_scene_monitor),
+     mannual_trigger_update_(false)
 {
 
 }
@@ -68,7 +69,8 @@ MoveItVisualTools::MoveItVisualTools(const std::string& base_frame,
                                      const std::string& marker_topic,
                                      robot_model::RobotModelConstPtr robot_model)
   :  RvizVisualTools::RvizVisualTools(base_frame, marker_topic),
-     robot_model_(robot_model)
+     robot_model_(robot_model),
+     mannual_trigger_update_(false)
 {
 
 }
@@ -114,7 +116,11 @@ bool MoveItVisualTools::loadPlanningSceneMonitor()
     //planning_scene_monitor_->startWorldGeometryMonitor();
     //planning_scene_monitor_->startSceneMonitor("/move_group/monitored_planning_scene");
     //planning_scene_monitor_->startStateMonitor("/joint_states", "/attached_collision_object");
-    //planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE, "test_planning_scene");
+
+    static const std::string PLANNING_SCENE_TOPIC = "/planning_scene";
+    planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE, 
+                                                          PLANNING_SCENE_TOPIC);
+    ROS_DEBUG_STREAM_NAMED("visual_tools","Publishing planning scene on " << PLANNING_SCENE_TOPIC);
   }
   else
   {
@@ -125,24 +131,26 @@ bool MoveItVisualTools::loadPlanningSceneMonitor()
   return true;
 }
 
-bool MoveItVisualTools::publishCollisionObjectMsg(moveit_msgs::CollisionObject msg)
+bool MoveItVisualTools::processCollisionObjectMsg(const moveit_msgs::CollisionObject& msg, const rviz_visual_tools::colors &color)
 {
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(msg);
-  ros::spinOnce();
-}
-
-bool MoveItVisualTools::processCollisionObjectMsg(moveit_msgs::CollisionObject msg)
-{
-  // Apply removal command directly to avoid a ROS msg call
+  // Apply command directly to planning scene to avoid a ROS msg call
   {
     planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
+    scene->getCurrentStateNonConst().update(); // hack to prevent bad transforms
     scene->processCollisionObjectMsg(msg);
+    scene->setObjectColor(msg.id, getColor(color));
   }
 
   // Trigger an update
-  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
+  if (!mannual_trigger_update_)
+    getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
 
+  return true;
+}
+
+bool MoveItVisualTools::triggerPlanningSceneUpdate()
+{
+  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
   return true;
 }
 
@@ -155,8 +163,6 @@ bool MoveItVisualTools::loadSharedRobotState()
     if (!robot_model_)
     {
       // Fall back on using planning scene monitor.
-      // \todo Deprecated?
-      ROS_WARN_STREAM_NAMED("temp","Falling back to using planning scene monitor for loading a robot state");
       planning_scene_monitor::PlanningSceneMonitorPtr psm = getPlanningSceneMonitor();
       robot_model_ = psm->getRobotModel();
     }
@@ -289,19 +295,6 @@ bool MoveItVisualTools::loadEEMarker(const std::string& ee_group_name, const std
   return true;
 }
 
-void MoveItVisualTools::loadCollisionPub()
-{
-  if (pub_collision_obj_)
-    return;
-
-  // Collision object creator
-  pub_collision_obj_ = nh_.advertise<moveit_msgs::CollisionObject>(COLLISION_TOPIC, 10);
-  ROS_DEBUG_STREAM_NAMED("visual_tools","Publishing collision objects on topic " << pub_collision_obj_.getTopic());
-
-  // Wait for topic to be ready
-  waitForSubscriber(pub_collision_obj_);
-}
-
 void MoveItVisualTools::loadAttachedPub()
 {
   if (pub_attach_collision_obj_)
@@ -313,19 +306,6 @@ void MoveItVisualTools::loadAttachedPub()
 
   // Wait for topic to be ready
   waitForSubscriber(pub_attach_collision_obj_);
-}
-
-void MoveItVisualTools::loadPlanningPub()
-{
-  if (pub_planning_scene_diff_)
-    return;
-
-  // Planning scene diff publisher
-  pub_planning_scene_diff_ = nh_.advertise<moveit_msgs::PlanningScene>(PLANNING_SCENE_TOPIC, 1);
-  ROS_DEBUG_STREAM_NAMED("visual_tools","Publishing planning scene on topic " << pub_planning_scene_diff_.getTopic());
-
-  // Wait for topic to be ready
-  waitForSubscriber(pub_planning_scene_diff_);
 }
 
 void MoveItVisualTools::loadTrajectoryPub()
@@ -358,6 +338,7 @@ planning_scene_monitor::PlanningSceneMonitorPtr MoveItVisualTools::getPlanningSc
 {
   if( !planning_scene_monitor_ )
   {
+    ROS_INFO_STREAM_NAMED("visual_tools","No planning scene passed into moveit_visual_tools, creating one.");
     loadPlanningSceneMonitor();
     ros::spinOnce();
     ros::Duration(1).sleep();
@@ -439,7 +420,6 @@ bool MoveItVisualTools::publishEEMarkers(const geometry_msgs::Pose &pose, const 
     tf::poseTFToMsg(tf_root_to_mesh_new, ee_marker_array_.markers[i].pose);
     // -----------------------------------------------------------------------------------------------
 
-    //ROS_INFO_STREAM("Marker " << i << " ------------- \n" << ee_marker_array_.markers[i]);
 
     // Helper for publishing rviz markers
     publishMarker( ee_marker_array_.markers[i] );
@@ -465,8 +445,6 @@ bool MoveItVisualTools::publishGrasps(const std::vector<moveit_msgs::Grasp>& pos
   {
     if( !ros::ok() )  // Check that ROS is still ok and that user isn't trying to quit
       break;
-
-    //ROS_DEBUG_STREAM_NAMED("grasp","Visualizing grasp pose " << i);
 
     publishEEMarkers(possible_grasps[i].grasp_pose.pose);
 
@@ -570,7 +548,7 @@ bool MoveItVisualTools::publishAnimatedGrasp(const moveit_msgs::Grasp &grasp, co
 }
 
 bool MoveItVisualTools::publishIKSolutions(const std::vector<trajectory_msgs::JointTrajectoryPoint> &ik_solutions,
-                                     const std::string& planning_group, double display_time)
+                                           const std::string& planning_group, double display_time)
 {
   if(muted_)
   {
@@ -588,14 +566,12 @@ bool MoveItVisualTools::publishIKSolutions(const std::vector<trajectory_msgs::Jo
 
   ROS_DEBUG_STREAM_NAMED("visual_tools","Visualizing " << ik_solutions.size() << " inverse kinematic solutions");
 
-  // Get robot model
-  robot_model::RobotModelConstPtr robot_model = shared_robot_state_->getRobotModel();
   // Get joint state group
-  const robot_model::JointModelGroup* joint_model_group = robot_model->getJointModelGroup(planning_group);
+  const robot_model::JointModelGroup* joint_model_group = robot_model_->getJointModelGroup(planning_group);
 
   if (joint_model_group == NULL) // not found
   {
-    ROS_ERROR_STREAM_NAMED("publishIKSolutions","Could not find joint model group " << planning_group);
+    ROS_ERROR_STREAM_NAMED("visual_tools","Could not find joint model group " << planning_group);
     return false;
   }
 
@@ -605,7 +581,7 @@ bool MoveItVisualTools::publishIKSolutions(const std::vector<trajectory_msgs::Jo
   // Create a trajectory with one point
   moveit_msgs::RobotTrajectory trajectory_msg;
   trajectory_msg.joint_trajectory.header.frame_id = base_frame_;
-  trajectory_msg.joint_trajectory.joint_names = joint_model_group->getJointModelNames();
+  trajectory_msg.joint_trajectory.joint_names = joint_model_group->getActiveJointModelNames();
 
   // Overall length of trajectory
   double running_time = 0;
@@ -622,51 +598,30 @@ bool MoveItVisualTools::publishIKSolutions(const std::vector<trajectory_msgs::Jo
 
     running_time += display_time;
 
-    //ROS_DEBUG_STREAM_NAMED("grasp","Visualizing ik solution " << i);
+    ROS_DEBUG_STREAM_NAMED("visual_tools","Visualizing ik solution " << i);
   }
 
   // Re-add final position so the last point is displayed fully
   trajectory_pt_timed = trajectory_msg.joint_trajectory.points.back();
   trajectory_pt_timed.time_from_start = ros::Duration(running_time);
   trajectory_msg.joint_trajectory.points.push_back(trajectory_pt_timed);
-
+  
   return publishTrajectoryPath(trajectory_msg, true);
 }
 
-bool MoveItVisualTools::publishRemoveAllCollisionObjects()
+bool MoveItVisualTools::removeAllCollisionObjects()
 {
-  // Publish an empty REMOVE message so as to remove all of them
-
-  moveit_msgs::PlanningScene planning_scene;
-  planning_scene.is_diff = true;
-  planning_scene.world.collision_objects.clear();
-
-  // Clean up old collision objects
-  moveit_msgs::CollisionObject remove_object;
-  remove_object.header.frame_id = base_frame_;
-  remove_object.operation = moveit_msgs::CollisionObject::REMOVE;
-
-  planning_scene.world.collision_objects.push_back(remove_object);
-
-  // Publish
-  loadPlanningPub(); // always call this before publishing
-  pub_planning_scene_diff_.publish(planning_scene);
-  ros::spinOnce();
+  // Apply command directly to planning scene to avoid a ROS msg call
+  {
+    planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
+    //scene->getCurrentStateNonConst().update(); // hack to prevent bad transforms
+    scene->removeAllCollisionObjects();
+  }
 
   return true;
 }
 
-bool MoveItVisualTools::removeAllCollisionObjectsPS()
-{
-  // Clean up old collision objects
-  moveit_msgs::CollisionObject remove_object;
-  remove_object.header.frame_id = base_frame_;
-  remove_object.operation = moveit_msgs::CollisionObject::REMOVE;
-
-  processCollisionObjectMsg(remove_object);
-}
-
-bool MoveItVisualTools::cleanupCO(std::string name)
+bool MoveItVisualTools::cleanupCO(const std::string& name)
 {
   // Clean up old collision objects
   moveit_msgs::CollisionObject co;
@@ -675,10 +630,7 @@ bool MoveItVisualTools::cleanupCO(std::string name)
   co.id = name;
   co.operation = moveit_msgs::CollisionObject::REMOVE;
 
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(co);
-  ros::spinOnce();
-  return true;
+  return processCollisionObjectMsg(co);
 }
 
 bool MoveItVisualTools::cleanupACO(const std::string& name)
@@ -696,12 +648,13 @@ bool MoveItVisualTools::cleanupACO(const std::string& name)
   loadAttachedPub(); // always call this before publishing
   pub_attach_collision_obj_.publish(aco);
   ros::spinOnce();
+
   return true;
 }
 
 bool MoveItVisualTools::attachCO(const std::string& name, const std::string& ee_parent_link)
 {
-  // Clean up old attached collision object
+  // Attach a collision object
   moveit_msgs::AttachedCollisionObject aco;
   aco.object.header.stamp = ros::Time::now();
   aco.object.header.frame_id = base_frame_;
@@ -715,22 +668,91 @@ bool MoveItVisualTools::attachCO(const std::string& name, const std::string& ee_
   loadAttachedPub(); // always call this before publishing
   pub_attach_collision_obj_.publish(aco);
   ros::spinOnce();
+
   return true;
 }
 
-bool MoveItVisualTools::publishCollisionFloor(double z, std::string plane_name)
+bool MoveItVisualTools::publishCollisionBlock(const geometry_msgs::Pose& block_pose, const std::string& block_name, 
+                                              double block_size, const rviz_visual_tools::colors &color)
 {
+  moveit_msgs::CollisionObject collision_obj;
+  collision_obj.header.stamp = ros::Time::now();
+  collision_obj.header.frame_id = base_frame_;
+  collision_obj.id = block_name;
+  collision_obj.operation = moveit_msgs::CollisionObject::ADD;
+
+  collision_obj.primitives.resize(1);
+  collision_obj.primitives[0].type = shape_msgs::SolidPrimitive::BOX;
+  collision_obj.primitives[0].dimensions.resize(shape_tools::SolidPrimitiveDimCount<shape_msgs::SolidPrimitive::BOX>::value);
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = block_size;
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = block_size;
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = block_size;
+  collision_obj.primitive_poses.resize(1);
+  collision_obj.primitive_poses[0] = block_pose;
+
+  //ROS_INFO_STREAM_NAMED("visual_tools","CollisionObject: \n " << collision_obj);
+  //ROS_DEBUG_STREAM_NAMED("visual_tools","Published collision object " << block_name);
+  return processCollisionObjectMsg(collision_obj, color);
+}
+
+bool MoveItVisualTools::publishCollisionRectangle(const Eigen::Vector3d &point1, const Eigen::Vector3d &point2, 
+                                                  const std::string& block_name, const rviz_visual_tools::colors &color)
+{
+  return publishCollisionRectangle( convertPoint(point1), convertPoint(point2), block_name, color );
+}
+
+bool MoveItVisualTools::publishCollisionRectangle(const geometry_msgs::Point &point1, const geometry_msgs::Point &point2, 
+                                                  const std::string& rectangle_name, const rviz_visual_tools::colors &color)
+{
+  moveit_msgs::CollisionObject collision_obj;
+  collision_obj.header.stamp = ros::Time::now();
+  collision_obj.header.frame_id = base_frame_;
+  collision_obj.id = rectangle_name;
+  collision_obj.operation = moveit_msgs::CollisionObject::ADD;
+
+  // Calculate center pose
+  collision_obj.primitive_poses.resize(1);
+  collision_obj.primitive_poses[0].position.x = (point1.x - point2.x) / 2.0 + point2.x;
+  collision_obj.primitive_poses[0].position.y = (point1.y - point2.y) / 2.0 + point2.y;
+  collision_obj.primitive_poses[0].position.z = (point1.z - point2.z) / 2.0 + point2.z;
+
+  // Calculate scale
+  collision_obj.primitives.resize(1);
+  collision_obj.primitives[0].type = shape_msgs::SolidPrimitive::BOX;
+  collision_obj.primitives[0].dimensions.resize(shape_tools::SolidPrimitiveDimCount<shape_msgs::SolidPrimitive::BOX>::value);
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = fabs(point1.x - point2.x);
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = fabs(point1.y - point2.y);
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = fabs(point1.z - point2.z);
+
+  // Prevent scale from being zero
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X]) 
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = rviz_visual_tools::SMALL_SCALE;
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y]) 
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = rviz_visual_tools::SMALL_SCALE;
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z]) 
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = rviz_visual_tools::SMALL_SCALE;
+
+  //ROS_INFO_STREAM_NAMED("visual_tools","CollisionObject: \n " << collision_obj);
+  return processCollisionObjectMsg(collision_obj, color);
+}
+
+bool MoveItVisualTools::publishCollisionFloor(double z, const std::string& plane_name, const rviz_visual_tools::colors &color)
+{
+  /*
+  TODO: I don't think collision planes are implemented... could not get this to work
   moveit_msgs::CollisionObject collision_obj;
   collision_obj.header.stamp = ros::Time::now();
   collision_obj.header.frame_id = base_frame_;
   collision_obj.id = plane_name;
   collision_obj.operation = moveit_msgs::CollisionObject::ADD;  
-  collision_obj.planes.resize(1);
+
   // Representation of a plane, using the plane equation ax + by + cz + d = 0
-  collision_obj.planes[0].coef[0] = 0; // a
-  collision_obj.planes[0].coef[1] = 0; // b
-  collision_obj.planes[0].coef[2] = 0; // c
-  collision_obj.planes[0].coef[3] = 0; // d
+  collision_obj.planes.resize(1);
+  collision_obj.planes[0].coef[0] = -2; // a
+  collision_obj.planes[0].coef[1] = 3; // b
+  collision_obj.planes[0].coef[2] = 5; // c
+  collision_obj.planes[0].coef[3] = 6; // d
+
   // Pose
   geometry_msgs::Pose floor_pose;
 
@@ -748,47 +770,31 @@ bool MoveItVisualTools::publishCollisionFloor(double z, std::string plane_name)
 
   collision_obj.plane_poses.resize(1);
   collision_obj.plane_poses[0] = floor_pose;
+  */
 
-  //ROS_INFO_STREAM_NAMED("visual_tools","CollisionObject: \n " << collision_obj);
+  // Instead just generate a rectangle
+  geometry_msgs::Point point1;
+  geometry_msgs::Point point2;
+  
+  point1.x = rviz_visual_tools::LARGE_SCALE;
+  point1.y = rviz_visual_tools::LARGE_SCALE;
+  point1.z = z;
 
-  processCollisionObjectMsg(collision_obj);
-
-  //ROS_DEBUG_STREAM_NAMED("visual_tools","Published collision object " << plane_name);
-  return true;
+  point2.x = -rviz_visual_tools::LARGE_SCALE;
+  point2.y = -rviz_visual_tools::LARGE_SCALE;
+  point2.z = z-rviz_visual_tools::SMALL_SCALE;;
+  
+  return publishCollisionRectangle(point1, point2, plane_name, color);
 }
 
-bool MoveItVisualTools::publishCollisionBlock(geometry_msgs::Pose block_pose, std::string block_name, double block_size)
+bool MoveItVisualTools::publishCollisionCylinder(const geometry_msgs::Point &a, const geometry_msgs::Point& b,
+                                                 const std::string& object_name, double radius, const rviz_visual_tools::colors &color)
 {
-  moveit_msgs::CollisionObject collision_obj;
-  collision_obj.header.stamp = ros::Time::now();
-  collision_obj.header.frame_id = base_frame_;
-  collision_obj.id = block_name;
-  collision_obj.operation = moveit_msgs::CollisionObject::ADD;
-  collision_obj.primitives.resize(1);
-  collision_obj.primitives[0].type = shape_msgs::SolidPrimitive::BOX;
-  collision_obj.primitives[0].dimensions.resize(shape_tools::SolidPrimitiveDimCount<shape_msgs::SolidPrimitive::BOX>::value);
-  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = block_size;
-  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = block_size;
-  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = block_size;
-  collision_obj.primitive_poses.resize(1);
-  collision_obj.primitive_poses[0] = block_pose;
-
-  //ROS_INFO_STREAM_NAMED("visual_tools","CollisionObject: \n " << collision_obj);
-
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(collision_obj);
-  ros::spinOnce();
-
-  ROS_DEBUG_STREAM_NAMED("visual_tools","Published collision object " << block_name);
-  return true;
+  return publishCollisionCylinder(convertPoint(a), convertPoint(b), object_name, radius, color);
 }
 
-bool MoveItVisualTools::publishCollisionCylinder(geometry_msgs::Point a, geometry_msgs::Point b, std::string object_name, double radius)
-{
-  return publishCollisionCylinder(convertPoint(a), convertPoint(b), object_name, radius);
-}
-
-bool MoveItVisualTools::publishCollisionCylinder(Eigen::Vector3d a, Eigen::Vector3d b, std::string object_name, double radius)
+bool MoveItVisualTools::publishCollisionCylinder(const Eigen::Vector3d &a, const Eigen::Vector3d &b,
+                                                 const std::string& object_name, double radius, const rviz_visual_tools::colors &color)
 {
   // Distance between two points
   double height = (a - b).lpNorm<2>();
@@ -805,15 +811,17 @@ bool MoveItVisualTools::publishCollisionCylinder(Eigen::Vector3d a, Eigen::Vecto
   rotation = Eigen::AngleAxisd(0.5*M_PI, Eigen::Vector3d::UnitY());
   pose = pose * rotation;
 
-  return publishCollisionCylinder(pose, object_name, radius, height);
+  return publishCollisionCylinder(pose, object_name, radius, height, color);
 }
 
-bool MoveItVisualTools::publishCollisionCylinder(Eigen::Affine3d object_pose, std::string object_name, double radius, double height)
+bool MoveItVisualTools::publishCollisionCylinder(const Eigen::Affine3d& object_pose, const std::string& object_name, 
+                                                 double radius, double height, const rviz_visual_tools::colors &color)
 {
-  return publishCollisionCylinder(convertPose(object_pose), object_name, radius, height);
+  return publishCollisionCylinder(convertPose(object_pose), object_name, radius, height, color);
 }
 
-bool MoveItVisualTools::publishCollisionCylinder(geometry_msgs::Pose object_pose, std::string object_name, double radius, double height)
+bool MoveItVisualTools::publishCollisionCylinder(const geometry_msgs::Pose& object_pose, const std::string& object_name, 
+                                                 double radius, double height, const rviz_visual_tools::colors &color)
 {
   moveit_msgs::CollisionObject collision_obj;
   collision_obj.header.stamp = ros::Time::now();
@@ -829,16 +837,11 @@ bool MoveItVisualTools::publishCollisionCylinder(geometry_msgs::Pose object_pose
   collision_obj.primitive_poses[0] = object_pose;
 
   //ROS_INFO_STREAM_NAMED("visual_tools","CollisionObject: \n " << collision_obj);
-
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(collision_obj);
-  ros::spinOnce();
-
-  //ROS_DEBUG_STREAM_NAMED("visual_tools","Published collision object " << object_name);
-  return true;
+  return processCollisionObjectMsg(collision_obj, color);
 }
 
-bool MoveItVisualTools::publishCollisionGraph(const graph_msgs::GeometryGraph &graph, const std::string &object_name, double radius)
+bool MoveItVisualTools::publishCollisionGraph(const graph_msgs::GeometryGraph &graph, const std::string &object_name, 
+                                              double radius, const rviz_visual_tools::colors &color)
 {
   ROS_INFO_STREAM_NAMED("publishCollisionGraph","Preparing to create collision graph");
 
@@ -905,11 +908,7 @@ bool MoveItVisualTools::publishCollisionGraph(const graph_msgs::GeometryGraph &g
     }
   }
 
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(collision_obj);
-  ros::spinOnce();
-
-  return true;
+  return processCollisionObjectMsg(collision_obj, color);
 }
 
 void MoveItVisualTools::getCollisionWallMsg(double x, double y, double angle, double width, const std::string name,
@@ -952,20 +951,18 @@ void MoveItVisualTools::getCollisionWallMsg(double x, double y, double angle, do
   collision_obj.primitive_poses[0] = rec_pose;
 }
 
-bool MoveItVisualTools::publishCollisionWall(double x, double y, double angle, double width, const std::string name)
+bool MoveItVisualTools::publishCollisionWall(double x, double y, double angle, double width, const std::string name,
+                                             const rviz_visual_tools::colors &color)
 {
   moveit_msgs::CollisionObject collision_obj;
   getCollisionWallMsg(x, y, angle, width, name, collision_obj);
 
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(collision_obj);
-  ros::spinOnce();
-
-  return true;
+  return processCollisionObjectMsg(collision_obj, color);
 }
 
 bool MoveItVisualTools::publishCollisionTable(double x, double y, double angle, double width, double height,
-                                        double depth, const std::string name)
+                                              double depth, const std::string name,
+                                              const rviz_visual_tools::colors &color)
 {
   geometry_msgs::Pose table_pose;
 
@@ -998,51 +995,104 @@ bool MoveItVisualTools::publishCollisionTable(double x, double y, double angle, 
   collision_obj.primitive_poses.resize(1);
   collision_obj.primitive_poses[0] = table_pose;
 
-  loadCollisionPub(); // always call this before publishing
-  pub_collision_obj_.publish(collision_obj);
-  ros::spinOnce();
-
-  return true;
+  return processCollisionObjectMsg(collision_obj, color);
 }
 
-bool MoveItVisualTools::loadCollisionSceneFromFile(const std::string &path, double x_offset, double y_offset)
+bool MoveItVisualTools::loadCollisionSceneFromFile(const std::string &path)
 {
+  return loadCollisionSceneFromFile(path, Eigen::Affine3d::Identity());
+}
+
+bool MoveItVisualTools::loadCollisionSceneFromFile(const std::string &path, const Eigen::Affine3d &offset)
+{
+  // Open file
+  std::ifstream fin(path.c_str());
+  if (fin.good())
   {
     // Load directly to the planning scene
     planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
-    if (scene)
     {
-
-      std::ifstream fin(path.c_str());
-      if (fin.good())
+      if (scene)
       {
-        //scene->loadGeometryFromStream(fin, x_offset, y_offset);
-        scene->loadGeometryFromStream(fin);
-        fin.close();
-        ROS_INFO("Loaded scene geometry from '%s'", path.c_str());
+        scene->loadGeometryFromStream(fin, offset);
       }
       else
-        ROS_WARN("Unable to load scene geometry from '%s'", path.c_str());
+      {
+        ROS_WARN_STREAM_NAMED("visual_tools","Unable to get locked planning scene RW");
+        return false;
+      }
     }
-    else
-      ROS_WARN_STREAM_NAMED("temp","Unable to get locked planning scene RW");
+    ROS_INFO_NAMED("visual_tools","Loaded scene geometry from '%s'", path.c_str());
   }
+  else
+    ROS_WARN_NAMED("visual_tools","Unable to load scene geometry from '%s'", path.c_str());
+
+  fin.close();
+
   getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
 }
 
+bool MoveItVisualTools::publishCollisionTests()
+{
+  // Create pose
+  geometry_msgs::Pose pose1;
+  geometry_msgs::Pose pose2;
+
+  // Test all shapes ----------
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Block");
+  generateRandomPose(pose1);
+  publishCollisionBlock(pose1, "Block", 0.1, rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Rectangle");
+  generateRandomPose(pose1);
+  generateRandomPose(pose2);
+  publishCollisionRectangle(pose1.position, pose2.position, "Rectangle", rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Floor");
+  publishCollisionFloor(0, "Floor", rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Cylinder");
+  generateRandomPose(pose1);
+  generateRandomPose(pose2);
+  publishCollisionCylinder(pose1.position, pose2.position, "Cylinder", 0.1, rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+  // TODO: test publishCollisionGraph
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Wall");
+  generateRandomPose(pose1);
+  publishCollisionWall(pose1.position.x, pose1.position.y, 0, 1, "Wall", rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+  ROS_INFO_STREAM_NAMED("visual_tools","Publishing Collision Table");
+  generateRandomPose(pose1);
+  publishCollisionTable(pose1.position.x, pose1.position.y, 0, 0.5, 0.5, 0.5, "Table", rviz_visual_tools::RAND);
+  ros::Duration(1.0).sleep();
+
+}
+
+bool MoveItVisualTools::publishWorkspaceParameters(const moveit_msgs::WorkspaceParameters& params)
+{
+  return publishRectangle(convertPoint(params.min_corner), convertPoint(params.max_corner), rviz_visual_tools::TRANSLUCENT);
+}
+
 bool MoveItVisualTools::publishTrajectoryPoint(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt,
-                                         const std::string &group_name, double display_time)
+                                         const std::string &planning_group, double display_time)
 {
   loadSharedRobotState();
 
   // Get robot model
   robot_model::RobotModelConstPtr robot_model = shared_robot_state_->getRobotModel();
   // Get joint state group
-  const robot_model::JointModelGroup* joint_model_group = robot_model->getJointModelGroup(group_name);
+  const robot_model::JointModelGroup* joint_model_group = robot_model->getJointModelGroup(planning_group);
 
   if (joint_model_group == NULL) // not found
   {
-    ROS_ERROR_STREAM_NAMED("publishTrajectoryPoint","Could not find joint model group " << group_name);
+    ROS_ERROR_STREAM_NAMED("publishTrajectoryPoint","Could not find joint model group " << planning_group);
     return false;
   }
 
@@ -1089,7 +1139,7 @@ bool MoveItVisualTools::publishTrajectoryPath(const moveit_msgs::RobotTrajectory
   // Check if we have enough points
   if (!trajectory_msg.joint_trajectory.points.size())
   {
-    ROS_WARN_STREAM_NAMED("temp","Unable to publish trajectory path because trajectory has zero points");
+    ROS_WARN_STREAM_NAMED("visual_tools","Unable to publish trajectory path because trajectory has zero points");
     return false;
   }
 
@@ -1125,31 +1175,62 @@ bool MoveItVisualTools::publishTrajectoryPath(const moveit_msgs::RobotTrajectory
   return true;
 }
 
-bool MoveItVisualTools::publishRobotState(const robot_state::RobotStatePtr &robot_state)
+bool MoveItVisualTools::publishRobotState(const robot_state::RobotStatePtr &robot_state,
+                                          const rviz_visual_tools::colors &color)
 {
-  publishRobotState(*robot_state.get());
+  publishRobotState(*robot_state.get(), color);
 }
 
-bool MoveItVisualTools::publishRobotState(const robot_state::RobotState &robot_state)
+bool MoveItVisualTools::publishRobotState(const robot_state::RobotState &robot_state,
+                                          const rviz_visual_tools::colors &color)
 {
-  robot_state::robotStateToRobotStateMsg(robot_state, display_robot_msg_.state);
+  // Reference to the correctly colored version of message (they are cached)
+  // May not exist yet but this will create it
+  moveit_msgs::DisplayRobotState& display_robot_msg = display_robot_msgs_[color]; 
 
+  // Check if a robot state message already exists for this color
+  if (display_robot_msg.highlight_links.size() == 0) // has not been colored yet, lets create that
+  {
+    if (color != rviz_visual_tools::DEFAULT) // ignore color highlights when set to default
+    {
+      // Get links names
+      const std::vector<const moveit::core::LinkModel*>& link_names = robot_state.getRobotModel()->getLinkModelsWithCollisionGeometry();
+      display_robot_msg.highlight_links.resize(link_names.size());
+
+      // Get color
+      const std_msgs::ColorRGBA& color_rgba = getColor(color);
+
+      // Color every link
+      for (std::size_t i = 0; i < link_names.size(); ++i)
+      {
+        display_robot_msg.highlight_links[i].id = link_names[i]->getName();
+        display_robot_msg.highlight_links[i].color = color_rgba;
+      }
+    }
+  }
+
+  // Convert state to message
+  robot_state::robotStateToRobotStateMsg(robot_state, display_robot_msg.state);
+
+  // Publish
   loadRobotStatePub();
-  pub_robot_state_.publish( display_robot_msg_ );
+  pub_robot_state_.publish( display_robot_msg );
   ros::spinOnce();
 
   return true;
 }
 
 bool MoveItVisualTools::publishRobotState(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt,
-                                    const std::string &group_name)
+                                    const std::string &planning_group)
 {
+  // TODO allow color
+
   // Always load the robot state before using
   loadSharedRobotState();
 
   // Set robot state
   shared_robot_state_->setToDefaultValues(); // reset the state just in case
-  shared_robot_state_->setJointGroupPositions(group_name, trajectory_pt.positions);
+  shared_robot_state_->setJointGroupPositions(planning_group, trajectory_pt.positions);
 
   // Publish robot state
   publishRobotState(*shared_robot_state_);
@@ -1162,9 +1243,9 @@ bool MoveItVisualTools::hideRobot()
   // Always load the robot state before using
   loadSharedRobotState();
 
-  shared_robot_state_->setVariablePosition("virtual_joint/trans_x", 10);
-  shared_robot_state_->setVariablePosition("virtual_joint/trans_y", 10);
-  shared_robot_state_->setVariablePosition("virtual_joint/trans_z", 10);
+  shared_robot_state_->setVariablePosition("virtual_joint/trans_x", rviz_visual_tools::LARGE_SCALE);
+  shared_robot_state_->setVariablePosition("virtual_joint/trans_y", rviz_visual_tools::LARGE_SCALE);
+  shared_robot_state_->setVariablePosition("virtual_joint/trans_z", rviz_visual_tools::LARGE_SCALE);
       
   publishRobotState(shared_robot_state_);
 }
