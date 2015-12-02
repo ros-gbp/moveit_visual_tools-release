@@ -1,0 +1,12 @@
+Source: ros-indigo-moveit-visual-tools
+Section: misc
+Priority: extra
+Maintainer: Dave Coleman <davetcoleman@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-indigo-catkin, ros-indigo-cmake-modules, ros-indigo-eigen-conversions, ros-indigo-geometry-msgs, ros-indigo-graph-msgs, ros-indigo-moveit-core, ros-indigo-moveit-ros-robot-interaction, ros-indigo-roscpp, ros-indigo-rviz-visual-tools, ros-indigo-std-msgs, ros-indigo-tf-conversions, ros-indigo-trajectory-msgs, ros-indigo-visualization-msgs
+Homepage: https://github.com/davetcoleman/moveit_visual_tools
+Standards-Version: 3.9.2
+
+Package: ros-indigo-moveit-visual-tools
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-indigo-geometry-msgs, ros-indigo-graph-msgs, ros-indigo-moveit-core, ros-indigo-moveit-msgs, ros-indigo-moveit-ros-robot-interaction, ros-indigo-rviz-visual-tools, ros-indigo-std-msgs, ros-indigo-trajectory-msgs, ros-indigo-visualization-msgs
+Description: Helper functions for displaying and debugging MoveIt! data in Rviz via published markers
