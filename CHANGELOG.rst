@@ -2,6 +2,12 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+3.0.1 (2015-12-05)
+------------------
+* catkin lint cleanup
+* Fix travis
+* Contributors: Dave Coleman
+
 3.0.0 (2015-12-02)
 ------------------
 * Release 3.0
