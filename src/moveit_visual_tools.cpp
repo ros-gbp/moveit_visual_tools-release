@@ -129,9 +129,7 @@ bool MoveItVisualTools::processCollisionObjectMsg(const moveit_msgs::CollisionOb
   {
     planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
     scene->getCurrentStateNonConst().update();  // hack to prevent bad transforms
-    std::cout << "before processCollisionObjectMsg" << std::endl;
     scene->processCollisionObjectMsg(msg);
-    std::cout << "after processCollisionObjectMsg" << std::endl;
     scene->setObjectColor(msg.id, getColor(color));
   }
   // Trigger an update
@@ -964,7 +962,7 @@ bool MoveItVisualTools::publishCollisionTable(double x, double y, double angle, 
   table_pose.position.x = x;
   table_pose.position.y = y;
   table_pose.position.z = height / 2 + floor_to_base_height;
-  std::cout << "1 " << std::endl;
+
   // Orientation
   Eigen::Quaterniond quat(Eigen::AngleAxis<double>(double(angle), Eigen::Vector3d::UnitZ()));
   table_pose.orientation.x = quat.x();
@@ -981,7 +979,7 @@ bool MoveItVisualTools::publishCollisionTable(double x, double y, double angle, 
   collision_obj.primitives[0].type = shape_msgs::SolidPrimitive::BOX;
   collision_obj.primitives[0].dimensions.resize(
       geometric_shapes::SolidPrimitiveDimCount<shape_msgs::SolidPrimitive::BOX>::value);
-  std::cout << "2 " << std::endl;
+
   // Size
   collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = depth;
   collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = width;
@@ -989,7 +987,6 @@ bool MoveItVisualTools::publishCollisionTable(double x, double y, double angle, 
 
   collision_obj.primitive_poses.resize(1);
   collision_obj.primitive_poses[0] = table_pose;
-  std::cout << "3 " << std::endl;
   return processCollisionObjectMsg(collision_obj, color);
 }
 
@@ -1372,41 +1369,46 @@ bool MoveItVisualTools::publishRobotState(
 
 bool MoveItVisualTools::hideRobot()
 {
+  static const std::string VJOINT_NAME = "virtual_joint";
+
   // Always load the robot state before using
   loadSharedRobotState();
 
-  // Check if joint and variable exist
-  if (hidden_robot_state_->getRobotModel()->hasJointModel("virtual_joint"))
+  // Check if joint
+  if (!hidden_robot_state_->getRobotModel()->hasJointModel(VJOINT_NAME))
   {
-    if (hidden_robot_state_->getRobotModel()
-            ->getJointModel("virtual_joint")
-            ->hasVariable("virtual_joint/trans_x"))
-    {
-      hidden_robot_state_->setVariablePosition("virtual_joint/trans_x",
-                                               rviz_visual_tools::LARGE_SCALE);
-      hidden_robot_state_->setVariablePosition("virtual_joint/trans_y",
-                                               rviz_visual_tools::LARGE_SCALE);
-      hidden_robot_state_->setVariablePosition("virtual_joint/trans_z",
-                                               rviz_visual_tools::LARGE_SCALE);
-      return publishRobotState(hidden_robot_state_);
-    }
-    else
-    {
-      // Debug
-      ROS_ERROR_STREAM_NAMED(name_, "The only available joint variables are:");
-      const std::vector<std::string>& var_names =
-          hidden_robot_state_->getRobotModel()->getJointModel("virtual_joint")->getVariableNames();
-      std::copy(var_names.begin(), var_names.end(),
-                std::ostream_iterator<std::string>(std::cout, "\n"));
-    }
-  }
-  ROS_WARN_STREAM_NAMED(name_, "Unable to hide robot because a "
-                                               "variable does not exist (or joint model)");
-  const std::vector<std::string>& names = hidden_robot_state_->getRobotModel()->getJointModelNames();
-  ROS_WARN_STREAM_NAMED(name_, "Available names:");
-  std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+    ROS_WARN_STREAM_NAMED(name_, "Unable to hide robot because joint '" << VJOINT_NAME
+                          << "' does not exist.");
+    const std::vector<std::string>& names = hidden_robot_state_->getRobotModel()->getJointModelNames();
+    ROS_WARN_STREAM_NAMED(name_, "Available names:");
+    std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
 
-  return false;
+    return false;
+  }
+
+  // Check if variables exist
+  if (!hidden_robot_state_->getRobotModel()->getJointModel(VJOINT_NAME)
+      ->hasVariable(VJOINT_NAME + "/trans_x"))
+  {
+    // Debug
+    ROS_WARN_STREAM_NAMED(name_, "Unable to hide robot because variables for joint '" << VJOINT_NAME
+                          << "' do not exist. Try making this vjoint floating");
+    ROS_WARN_STREAM_NAMED(name_, "The only available joint variables are:");
+    const std::vector<std::string>& var_names =
+      hidden_robot_state_->getRobotModel()->getJointModel(VJOINT_NAME)->getVariableNames();
+    std::copy(var_names.begin(), var_names.end(),
+              std::ostream_iterator<std::string>(std::cout, "\n"));
+    return false;
+  }
+
+  // Hide the robot
+  hidden_robot_state_->setVariablePosition(VJOINT_NAME + "/trans_x",
+                                           rviz_visual_tools::LARGE_SCALE);
+  hidden_robot_state_->setVariablePosition(VJOINT_NAME + "/trans_y",
+                                           rviz_visual_tools::LARGE_SCALE);
+  hidden_robot_state_->setVariablePosition(VJOINT_NAME + "/trans_z",
+                                           rviz_visual_tools::LARGE_SCALE);
+  return publishRobotState(hidden_robot_state_);
 }
 
 }  // namespace
