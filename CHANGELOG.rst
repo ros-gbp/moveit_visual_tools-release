@@ -2,12 +2,6 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-3.0.5 (2016-02-09)
-------------------
-* Updated README
-* Better comment
-* Contributors: Dave Coleman
-
 3.0.4 (2016-01-12)
 ------------------
 * Removed stray debug output
