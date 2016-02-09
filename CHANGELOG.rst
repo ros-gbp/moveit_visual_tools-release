@@ -2,6 +2,32 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+3.0.5 (2016-02-09)
+------------------
+* Updated README
+* Better comment
+* Contributors: Dave Coleman
+
+3.0.4 (2016-01-12)
+------------------
+* Removed stray debug output
+* Improved debugging output for the hideRobot() feature and virtual_joints
+* Contributors: Dave Coleman
+
+3.0.3 (2016-01-10)
+------------------
+* Renamed test to demo
+* New publishTrajectoryLine() function
+* Fix travis
+* Deprecated loadEEMarker() that uses string
+* Formatted code
+* Switched from MOVEIT deprecated to RVIZ_VISUAL_TOOLS deprecated
+* Fixed shared_robot_state to initialize correctly every time
+* Switched to using name\_ variables
+* Add error checks to publishTrajectoryLine
+* Added ability for publishTrajectoryLine to clear all previous markers
+* Contributors: Dave Coleman
+
 3.0.2 (2015-12-27)
 ------------------
 * Updated README
