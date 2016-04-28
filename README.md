@@ -1,3 +1,26 @@
+## moveit_visual_tools (jade) - 3.1.0-0
+
+The packages in the `moveit_visual_tools` repository were released into the `jade` distro by running `/usr/bin/bloom-release moveit_visual_tools -t jade -r jade` on `Thu, 28 Apr 2016 23:05:21 -0000`
+
+The `moveit_visual_tools` package was released.
+
+Version of package(s) in repository `moveit_visual_tools`:
+
+- upstream repository: https://github.com/davetcoleman/moveit_visual_tools.git
+- release repository: https://github.com/davetcoleman/moveit_visual_tools-release.git
+- rosdistro version: `3.0.5-0`
+- old version: `3.0.5-0`
+- new version: `3.1.0-0`
+
+Versions of tools used:
+
+- bloom version: `0.5.21`
+- catkin_pkg version: `0.2.10`
+- rosdep version: `0.11.4`
+- rosdistro version: `0.4.7`
+- vcstools version: `0.1.38`
+
+
 ## moveit_visual_tools (indigo) - 3.0.4-1
 
 The packages in the `moveit_visual_tools` repository were released into the `indigo` distro by running `/usr/bin/bloom-release moveit_visual_tools -t indigo -r indigo` on `Tue, 09 Feb 2016 22:20:48 -0000`
