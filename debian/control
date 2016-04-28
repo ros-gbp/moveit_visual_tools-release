@@ -1,0 +1,12 @@
+Source: ros-jade-moveit-visual-tools
+Section: misc
+Priority: extra
+Maintainer: Dave Coleman <davetcoleman@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-jade-catkin, ros-jade-cmake-modules, ros-jade-eigen-conversions, ros-jade-geometry-msgs, ros-jade-graph-msgs, ros-jade-moveit-core, ros-jade-moveit-ros-robot-interaction, ros-jade-roscpp, ros-jade-roslint, ros-jade-rviz-visual-tools, ros-jade-std-msgs, ros-jade-tf-conversions, ros-jade-trajectory-msgs, ros-jade-visualization-msgs
+Homepage: https://github.com/davetcoleman/moveit_visual_tools
+Standards-Version: 3.9.2
+
+Package: ros-jade-moveit-visual-tools
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-jade-cmake-modules, ros-jade-eigen-conversions, ros-jade-geometry-msgs, ros-jade-graph-msgs, ros-jade-moveit-core, ros-jade-moveit-ros-robot-interaction, ros-jade-roscpp, ros-jade-roslint, ros-jade-rviz-visual-tools, ros-jade-std-msgs, ros-jade-tf-conversions, ros-jade-trajectory-msgs, ros-jade-visualization-msgs
+Description: Helper functions for displaying and debugging MoveIt! data in Rviz via published markers
