@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   trajectory_msgs
   cmake_modules
+  roslint
 )
 
 find_package(Eigen REQUIRED)
@@ -32,7 +33,6 @@ catkin_package(
     visualization_msgs
     graph_msgs
     std_msgs
-    moveit_msgs
     trajectory_msgs
   INCLUDE_DIRS include
 )
@@ -49,7 +49,7 @@ include_directories(
 
 # Visualization Tools Library
 add_library(${PROJECT_NAME}
-  src/moveit_visual_tools.cpp
+  src/${PROJECT_NAME}.cpp
 )
 add_dependencies(${PROJECT_NAME} graph_msgs_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}
@@ -62,16 +62,17 @@ target_link_libraries(${PROJECT_NAME}_demo
   ${catkin_LIBRARIES} ${PROJECT_NAME}
 )
 
-# Demo executable
-add_executable(${PROJECT_NAME}_collision_objects_demo src/collision_objects_demo.cpp)
-set_target_properties(${PROJECT_NAME}_collision_objects_demo
-  PROPERTIES OUTPUT_NAME collision_objects_demo PREFIX ""
-)
-target_link_libraries(${PROJECT_NAME}_collision_objects_demo
-  ${catkin_LIBRARIES} ${PROJECT_NAME}
-)
 
-## Install
+#############
+## Testing ##
+#############
+
+## Test for correct C++ source code
+roslint_cpp()
+
+#############
+## Install ##
+#############
 
 # Install libraries
 install(TARGETS ${PROJECT_NAME}
@@ -85,7 +86,7 @@ install(DIRECTORY launch    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 install(DIRECTORY resources DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 
 # Install executables
-install(TARGETS ${PROJECT_NAME}_demo ${PROJECT_NAME}_collision_objects_demo
+install(TARGETS ${PROJECT_NAME}_demo
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
