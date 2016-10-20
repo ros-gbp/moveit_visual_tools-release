@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(moveit_visual_tools)
 
+# C++ 11 required for OMPL
+add_compile_options(-std=c++11)
+
 # Load catkin and all dependencies required for this package
 find_package(catkin REQUIRED COMPONENTS
   rviz_visual_tools
@@ -18,8 +21,8 @@ find_package(catkin REQUIRED COMPONENTS
   roslint
 )
 
-find_package(Eigen REQUIRED)
-find_package(Boost REQUIRED thread system)
+find_package(Eigen3 REQUIRED)
+find_package(Boost REQUIRED system)
 
 # Catkin
 catkin_package(
@@ -37,10 +40,10 @@ catkin_package(
   INCLUDE_DIRS include
 )
 
-# Enable gdb to show line numbers
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -g -W -Wno-unused-parameter -fno-strict-aliasing")
-
 ## Build
+include_directories(SYSTEM
+  ${EIGEN3_INCLUDE_DIRS}
+)
 
 include_directories(
   include
@@ -50,6 +53,8 @@ include_directories(
 # Visualization Tools Library
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}.cpp
+  src/imarker_robot_state.cpp
+  src/imarker_end_effector.cpp
 )
 add_dependencies(${PROJECT_NAME} graph_msgs_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}
