@@ -1,3 +1,26 @@
+## moveit_visual_tools (kinetic) - 3.2.1-0
+
+The packages in the `moveit_visual_tools` repository were released into the `kinetic` distro by running `/usr/bin/bloom-release moveit_visual_tools -t kinetic -r kinetic` on `Wed, 02 Nov 2016 16:56:13 -0000`
+
+The `moveit_visual_tools` package was released.
+
+Version of package(s) in repository `moveit_visual_tools`:
+
+- upstream repository: https://github.com/davetcoleman/moveit_visual_tools.git
+- release repository: https://github.com/davetcoleman/moveit_visual_tools-release.git
+- rosdistro version: `3.2.0-0`
+- old version: `3.2.0-0`
+- new version: `3.2.1-0`
+
+Versions of tools used:
+
+- bloom version: `0.5.23`
+- catkin_pkg version: `0.2.10`
+- rosdep version: `0.11.5`
+- rosdistro version: `0.5.0`
+- vcstools version: `0.1.39`
+
+
 ## moveit_visual_tools (kinetic) - 3.2.0-0
 
 The packages in the `moveit_visual_tools` repository were released into the `kinetic` distro by running `/usr/bin/bloom-release moveit_visual_tools -t kinetic -r kinetic` on `Thu, 20 Oct 2016 23:58:09 -0000`
