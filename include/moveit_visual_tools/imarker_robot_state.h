@@ -101,21 +101,28 @@ public:
   void setIMarkerCallback(IMarkerCallback callback);
 
   /** \brief Get a pointer to the current robot state */
-  moveit::core::RobotStatePtr &getRobotState()
+  moveit::core::RobotStateConstPtr getRobotState()
+  {
+    return imarker_state_;
+  }
+  moveit::core::RobotStatePtr getRobotStateNonConst()
   {
     return imarker_state_;
   }
 
-  /** \brief Set the robot state to current */
+  /** \brief Set the robot state */
+  void setRobotState(moveit::core::RobotStatePtr state);
+
+  /** \brief Set the robot state to current in planning scene monitor */
   void setToCurrentState();
 
   bool setToRandomState();
 
   /** \brief Return true if the currently solved IK solution is valid */
-  bool isStateValid();
+  bool isStateValid(bool verbose);
 
   /** \brief Show current state in Rviz */
-  void publishState();
+  void publishRobotState();
 
   moveit_visual_tools::MoveItVisualToolsPtr getVisualTools();
 
@@ -125,6 +132,8 @@ public:
   {
     return name_to_eef_[name];
   }
+
+  bool setFromPoses(const EigenSTL::vector_Affine3d poses, const moveit::core::JointModelGroup *group);
 
 protected:
   // --------------------------------------------------------
@@ -167,5 +176,13 @@ protected:
 typedef std::shared_ptr<IMarkerRobotState> IMarkerRobotStatePtr;
 typedef std::shared_ptr<const IMarkerRobotState> IMarkerRobotStateConstPtr;
 }  // namespace moveit_visual_tools
+
+namespace
+{
+/** \brief Collision checking handle for IK solvers */
+bool isIKStateValid(const planning_scene::PlanningScene *planning_scene, bool verbose, bool only_check_self_collision,
+                  moveit_visual_tools::MoveItVisualToolsPtr visual_tools_, robot_state::RobotState *state,
+                  const robot_state::JointModelGroup *group, const double *ik_solution);
+}
 
 #endif  // MOVEIT_VISUAL_TOOLS_IMARKER_ROBOT_STATE_H
