@@ -1,0 +1,12 @@
+Source: ros-lunar-moveit-visual-tools
+Section: misc
+Priority: extra
+Maintainer: Dave Coleman <davetcoleman@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-lunar-catkin, ros-lunar-cmake-modules, ros-lunar-eigen-conversions, ros-lunar-geometry-msgs, ros-lunar-graph-msgs, ros-lunar-moveit-core, ros-lunar-moveit-ros-robot-interaction, ros-lunar-roscpp, ros-lunar-roslint, ros-lunar-rviz-visual-tools, ros-lunar-std-msgs, ros-lunar-tf-conversions, ros-lunar-trajectory-msgs, ros-lunar-visualization-msgs
+Homepage: https://github.com/davetcoleman/moveit_visual_tools
+Standards-Version: 3.9.2
+
+Package: ros-lunar-moveit-visual-tools
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-lunar-cmake-modules, ros-lunar-eigen-conversions, ros-lunar-geometry-msgs, ros-lunar-graph-msgs, ros-lunar-moveit-core, ros-lunar-moveit-ros-robot-interaction, ros-lunar-roscpp, ros-lunar-roslint, ros-lunar-rviz-visual-tools, ros-lunar-std-msgs, ros-lunar-tf-conversions, ros-lunar-trajectory-msgs, ros-lunar-visualization-msgs
+Description: Helper functions for displaying and debugging MoveIt! data in Rviz via published markers
