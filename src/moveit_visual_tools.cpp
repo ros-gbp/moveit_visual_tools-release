@@ -65,9 +65,9 @@
 namespace moveit_visual_tools
 {
 MoveItVisualTools::MoveItVisualTools(const std::string& base_frame, const std::string& marker_topic,
-                                     planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor)
+                                     planning_scene_monitor::PlanningSceneMonitorPtr psm)
   : RvizVisualTools::RvizVisualTools(base_frame, marker_topic)
-  , planning_scene_monitor_(planning_scene_monitor)
+  , psm_(psm)
   , robot_state_topic_(DISPLAY_ROBOT_STATE_TOPIC)
   , planning_scene_topic_(PLANNING_SCENE_TOPIC)
 {
@@ -82,7 +82,7 @@ MoveItVisualTools::MoveItVisualTools(const std::string& base_frame, const std::s
 bool MoveItVisualTools::loadPlanningSceneMonitor()
 {
   // Check if we already have one
-  if (planning_scene_monitor_)
+  if (psm_)
   {
     ROS_WARN_STREAM_NAMED(name_, "Will not load a new planning scene monitor when one has "
                                  "already been set for Visual Tools");
@@ -94,24 +94,26 @@ bool MoveItVisualTools::loadPlanningSceneMonitor()
   boost::shared_ptr<tf::TransformListener> tf;
 
   // Regular version b/c the other one causes problems with recognizing end effectors
-  planning_scene_monitor_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf, "visual_tools_"
-                                                                                                        "scene"));
+  psm_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf, "visual_tools_scene"));
+
   ros::spinOnce();
   ros::Duration(0.1).sleep();
   ros::spinOnce();
 
-  if (planning_scene_monitor_->getPlanningScene())
+  if (psm_->getPlanningScene())
   {
     // Optional monitors to start:
-    // planning_scene_monitor_->startWorldGeometryMonitor();
-    // planning_scene_monitor_->startSceneMonitor("/move_group/monitored_planning_scene");
-    // planning_scene_monitor_->startStateMonitor("/joint_states", "/attached_collision_object");
+    // psm_->startWorldGeometryMonitor();
+    // psm_->startSceneMonitor("/move_group/monitored_planning_scene");
+    // psm_->startStateMonitor("/joint_states", "/attached_collision_object");
 
-    planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
-                                                          planning_scene_topic_);
+    psm_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
+                                       planning_scene_topic_);
     ROS_DEBUG_STREAM_NAMED(name_, "Publishing planning scene on " << planning_scene_topic_);
 
-    planning_scene_monitor_->getPlanningScene()->setName("visual_tools_scene");
+
+    planning_scene_monitor::LockedPlanningSceneRW planning_scene(psm_);
+    planning_scene->setName("visual_tools_scene");
   }
   else
   {
@@ -128,7 +130,7 @@ bool MoveItVisualTools::processCollisionObjectMsg(const moveit_msgs::CollisionOb
   // Apply command directly to planning scene to avoid a ROS msg call
   {
     planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
-    scene->getCurrentStateNonConst().update();  // hack to prevent bad transforms
+    scene->getCurrentStateNonConst().update();  // TODO: remove hack to prevent bad transforms
     scene->processCollisionObjectMsg(msg);
     scene->setObjectColor(msg.id, getColor(color));
   }
@@ -159,6 +161,27 @@ bool MoveItVisualTools::processAttachedCollisionObjectMsg(const moveit_msgs::Att
   return true;
 }
 
+bool MoveItVisualTools::moveCollisionObject(const Eigen::Affine3d& pose, const std::string& name, const rviz_visual_tools::colors& color)
+{
+  return moveCollisionObject(convertPose(pose), name, color);
+}
+
+bool MoveItVisualTools::moveCollisionObject(const geometry_msgs::Pose& pose, const std::string& name, const rviz_visual_tools::colors& color)
+{
+  moveit_msgs::CollisionObject collision_obj;
+  collision_obj.header.stamp = ros::Time::now();
+  collision_obj.header.frame_id = base_frame_;
+  collision_obj.id = name;
+  collision_obj.operation = moveit_msgs::CollisionObject::MOVE;
+
+  collision_obj.primitive_poses.resize(1);
+  collision_obj.primitive_poses[0] = pose;
+
+  // ROS_INFO_STREAM_NAMED(name_,"CollisionObject: \n " << collision_obj);
+  // ROS_DEBUG_STREAM_NAMED(name_,"Published collision object " << name);
+  return processCollisionObjectMsg(collision_obj, color);
+}
+
 bool MoveItVisualTools::triggerPlanningSceneUpdate()
 {
   // TODO(davetcoleman): perhaps switch to using the service call?
@@ -177,8 +200,7 @@ bool MoveItVisualTools::loadSharedRobotState()
     if (!robot_model_)
     {
       // Fall back on using planning scene monitor.
-      planning_scene_monitor::PlanningSceneMonitorPtr psm = getPlanningSceneMonitor();
-      robot_model_ = psm->getRobotModel();
+      robot_model_ = getPlanningSceneMonitor()->getRobotModel();
     }
     shared_robot_state_.reset(new robot_state::RobotState(robot_model_));
 
@@ -1446,14 +1468,14 @@ void MoveItVisualTools::showJointLimits(robot_state::RobotStatePtr robot_state)
 
 planning_scene_monitor::PlanningSceneMonitorPtr MoveItVisualTools::getPlanningSceneMonitor()
 {
-  if (!planning_scene_monitor_)
+  if (!psm_)
   {
     ROS_INFO_STREAM_NAMED(name_, "No planning scene passed into moveit_visual_tools, creating one.");
     loadPlanningSceneMonitor();
     ros::spinOnce();
-    ros::Duration(1).sleep();
+    ros::Duration(1).sleep(); // TODO: is this necessary?
   }
-  return planning_scene_monitor_;
+  return psm_;
 }
 
 bool MoveItVisualTools::checkForVirtualJoint(const moveit::core::RobotState& robot_state)
@@ -1465,8 +1487,8 @@ bool MoveItVisualTools::checkForVirtualJoint(const moveit::core::RobotState& rob
   {
     ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Joint '" << VJOINT_NAME << "' does not exist.");
     const std::vector<std::string>& names = robot_state.getRobotModel()->getJointModelNames();
-    ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Available names:");
-    std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+    // ROS_DEBUG_STREAM_NAMED("moveit_visual_tools", "Available names:");
+    // std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
 
     return false;
   }
@@ -1495,7 +1517,7 @@ bool MoveItVisualTools::applyVirtualJointTransform(moveit::core::RobotState& rob
   // Error check
   if (!checkForVirtualJoint(robot_state))
   {
-    ROS_ERROR_STREAM_NAMED("moveit_visual_tools", "Unable to apply virtual joint transform");
+    ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Unable to apply virtual joint transform, hideRobot() functionality is disabled");
     return false;
   }
 
