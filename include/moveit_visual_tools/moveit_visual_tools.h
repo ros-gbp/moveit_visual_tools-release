@@ -82,7 +82,7 @@ public:
    *        avoid having to re-load the URDF, kinematic solvers, etc
    */
   MoveItVisualTools(const std::string &base_frame, const std::string &marker_topic,
-                    planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor);
+                    planning_scene_monitor::PlanningSceneMonitorPtr psm);
 
   /**
    * \brief Constructor
@@ -135,6 +135,15 @@ public:
   bool processAttachedCollisionObjectMsg(const moveit_msgs::AttachedCollisionObject &msg);
 
   /**
+   * \brief Move an already published collision object to a new locaiton in space
+   * \param pose - location of center of object
+   * \param name - semantic name of MoveIt collision object
+   * \return true on success
+   */
+  bool moveCollisionObject(const Eigen::Affine3d& pose, const std::string& name, const rviz_visual_tools::colors& color);
+  bool moveCollisionObject(const geometry_msgs::Pose& pose, const std::string& name, const rviz_visual_tools::colors& color);
+
+  /**
    * \brief When mannual_trigger_update_ is true, use this to tell the planning scene to send
    *        an update out. Do not use otherwise
    */
@@ -185,9 +194,9 @@ public:
    * \brief Allow a pre-configured planning scene monitor to be set for publishing collision objects, etc
    * \param a pointer to a load planning scen
    */
-  void setPlanningSceneMonitor(planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor)
+  void setPlanningSceneMonitor(planning_scene_monitor::PlanningSceneMonitorPtr psm)
   {
-    planning_scene_monitor_ = planning_scene_monitor;
+    psm_ = psm;
   }
 
   /**
@@ -302,7 +311,7 @@ public:
    * \param color to display the collision object with
    * \return true on sucess
    **/
-  bool publishCollisionBlock(const geometry_msgs::Pose &block_pose, const std::string &block_name, double block_size,
+  bool publishCollisionBlock(const geometry_msgs::Pose &block_pose, const std::string &block_name = "block", double block_size = 0.1,
                              const rviz_visual_tools::colors &color = rviz_visual_tools::GREEN);
 
   /**
@@ -584,12 +593,13 @@ public:
    */
   void showJointLimits(moveit::core::RobotStatePtr robot_state);
 
-private:
   /**
    * @brief Get the planning scene monitor that this class is using
    * @return a ptr to a planning scene
    */
   planning_scene_monitor::PlanningSceneMonitorPtr getPlanningSceneMonitor();
+
+private:
 
   /**
    * \brief Error check that the robot's SRDF was properly setup with a virtual joint that was named a certain way
@@ -599,7 +609,7 @@ private:
 
 protected:
   // Pointer to a Planning Scene Monitor
-  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
+  planning_scene_monitor::PlanningSceneMonitorPtr psm_;
 
   // Prevent the planning scene from always auto-pushing, but rather do it manually
   bool mannual_trigger_update_ = false;
