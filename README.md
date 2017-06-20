@@ -1,3 +1,26 @@
+## moveit_visual_tools (lunar) - 3.3.0-0
+
+The packages in the `moveit_visual_tools` repository were released into the `lunar` distro by running `/usr/bin/bloom-release moveit_visual_tools -t lunar -r lunar --edit` on `Tue, 20 Jun 2017 11:08:49 -0000`
+
+The `moveit_visual_tools` package was released.
+
+Version of package(s) in repository `moveit_visual_tools`:
+
+- upstream repository: https://github.com/ros-planning/moveit_visual_tools.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `3.3.0-0`
+
+Versions of tools used:
+
+- bloom version: `0.5.26`
+- catkin_pkg version: `0.3.5`
+- rosdep version: `0.11.5`
+- rosdistro version: `0.6.2`
+- vcstools version: `0.1.39`
+
+
 ## moveit_visual_tools (kinetic) - 3.3.0-0
 
 The packages in the `moveit_visual_tools` repository were released into the `kinetic` distro by running `/usr/bin/bloom-release moveit_visual_tools -t kinetic -r kinetic --edit` on `Tue, 20 Jun 2017 10:20:12 -0000`
