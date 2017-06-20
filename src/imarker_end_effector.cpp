@@ -85,7 +85,7 @@ bool IMarkerEndEffector::setPoseFromRobotState()
   sendUpdatedIMarkerPose();
 
   // Show initial robot state loaded from file
-  imarker_parent_->publishState();
+  imarker_parent_->publishRobotState();
 
   return true;
 }
@@ -160,7 +160,7 @@ void IMarkerEndEffector::solveIK(Eigen::Affine3d &pose)
     // if (psm_->getPlanningScene()->isStateValid(*imarker_state_))
     //{
     // ROS_INFO_STREAM_NAMED(name_, "Solved IK");
-    imarker_parent_->publishState();
+    imarker_parent_->publishRobotState();
     //}
     // else
     // {
@@ -206,7 +206,7 @@ void IMarkerEndEffector::make6DofMarker(const geometry_msgs::Pose &pose)
   int_marker_.scale = 0.2;
 
   int_marker_.name = name_;
-  int_marker_.description = "imarker_" + name_;
+  //int_marker_.description = "imarker_" + name_; // TODO: unsure, but I think this causes a caption in Rviz that I don't want
 
   // insert a box
   // makeBoxControl(int_marker_);
