@@ -57,7 +57,7 @@ namespace moveit_visual_tools
 using visualization_msgs::InteractiveMarkerFeedback;
 using visualization_msgs::InteractiveMarkerControl;
 
-typedef std::function<void(const visualization_msgs::InteractiveMarkerFeedbackConstPtr&, const Eigen::Affine3d&)>
+typedef std::function<void(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &, const Eigen::Affine3d &)>
     IMarkerCallback;
 
 typedef std::shared_ptr<interactive_markers::InteractiveMarkerServer> InteractiveMarkerServerPtr;
@@ -71,10 +71,10 @@ typedef std::shared_ptr<const IMarkerEndEffector> IMarkerEndEffectorConstPtr;
  */
 struct ArmData
 {
-  ArmData(moveit::core::JointModelGroup* jmg, moveit::core::LinkModel* ee_link) : jmg_(jmg), ee_link_(ee_link){};
+  ArmData(moveit::core::JointModelGroup *jmg, moveit::core::LinkModel *ee_link) : jmg_(jmg), ee_link_(ee_link){};
 
-  moveit::core::JointModelGroup* jmg_;
-  moveit::core::LinkModel* ee_link_;
+  moveit::core::JointModelGroup *jmg_;
+  moveit::core::LinkModel *ee_link_;
 };
 
 class IMarkerRobotState
@@ -85,15 +85,15 @@ public:
   /**
    * \brief Constructor
    */
-  IMarkerRobotState(planning_scene_monitor::PlanningSceneMonitorPtr psm, const std::string& imarker_name,
-                    std::vector<ArmData> arm_datas, rviz_visual_tools::colors color, const std::string& package_path);
+  IMarkerRobotState(planning_scene_monitor::PlanningSceneMonitorPtr psm, const std::string &imarker_name,
+                    std::vector<ArmData> arm_datas, rviz_visual_tools::colors color, const std::string &package_path);
 
   ~IMarkerRobotState()
   {
     output_file_.close();
   }
 
-  bool loadFromFile(const std::string& file_name);
+  bool loadFromFile(const std::string &file_name);
 
   bool saveToFile();
 
@@ -101,44 +101,30 @@ public:
   void setIMarkerCallback(IMarkerCallback callback);
 
   /** \brief Get a pointer to the current robot state */
-  moveit::core::RobotStateConstPtr getRobotState()
-  {
-    return imarker_state_;
-  }
-  moveit::core::RobotStatePtr getRobotStateNonConst()
+  moveit::core::RobotStatePtr &getRobotState()
   {
     return imarker_state_;
   }
 
-  /** \brief Set the robot state */
-  void setRobotState(moveit::core::RobotStatePtr state);
-
-  /** \brief Set the robot state to current in planning scene monitor */
+  /** \brief Set the robot state to current */
   void setToCurrentState();
 
-  /**
-   * \brief Set the robot to a random position
-   * \param clearance - optional value to ensure random state is not too close to obstacles. 0 is disable
-   * \return true on success
-   */
-  bool setToRandomState(double clearance = 0);
+  bool setToRandomState();
 
   /** \brief Return true if the currently solved IK solution is valid */
-  bool isStateValid(bool verbose = false);
+  bool isStateValid();
 
   /** \brief Show current state in Rviz */
-  void publishRobotState();
+  void publishState();
 
   moveit_visual_tools::MoveItVisualToolsPtr getVisualTools();
 
-  bool getFilePath(std::string& file_path, const std::string& file_name, const std::string& subdirectory) const;
+  bool getFilePath(std::string &file_path, const std::string &file_name, const std::string &subdirectory) const;
 
-  IMarkerEndEffectorPtr getEEF(const std::string& name)
+  IMarkerEndEffectorPtr getEEF(const std::string &name)
   {
     return name_to_eef_[name];
   }
-
-  bool setFromPoses(const EigenSTL::vector_Affine3d poses, const moveit::core::JointModelGroup* group);
 
 protected:
   // --------------------------------------------------------
@@ -181,13 +167,5 @@ protected:
 typedef std::shared_ptr<IMarkerRobotState> IMarkerRobotStatePtr;
 typedef std::shared_ptr<const IMarkerRobotState> IMarkerRobotStateConstPtr;
 }  // namespace moveit_visual_tools
-
-namespace
-{
-/** \brief Collision checking handle for IK solvers */
-bool isIKStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
-                    moveit_visual_tools::MoveItVisualToolsPtr visual_tools_, robot_state::RobotState* state,
-                    const robot_state::JointModelGroup* group, const double* ik_solution);
-}
 
 #endif  // MOVEIT_VISUAL_TOOLS_IMARKER_ROBOT_STATE_H

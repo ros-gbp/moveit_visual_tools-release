@@ -2,31 +2,6 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-3.4.0 (2017-12-27)
-------------------
-* Apply current MoveIt clang-format
-* Various improvements needed while finishing planning thesis
-* Fix greater than/less than issue in clearance check
-* Ability to specify clearance for random state
-* Small threading fixes
-* imarker: Fix setToRandomState()
-  imarker: Switch to std::makeshared
-* Improve console output
-* Contributors: Dave Coleman, Mike Lautman
-
-3.3.0 (2017-06-20)
-------------------
-* Change error message to warning
-* Make planning scene monitor publicly exposed
-* Remove label from imarkers
-* Ability to move a collision object without removing it first
-* IMarkerRobotState: update imarkers location when setting robot state
-* IMarkerRobotState: Added setRobotState()
-* IMarkerRobotState: Renamed function publishRobotState()
-* MoveItVisualTools: renamed variable to psm\_
-* Expose verbose collision checking
-* Contributors: Dave Coleman
-
 3.2.1 (2016-11-02)
 ------------------
 * New publishTrajectoryPath() functions
