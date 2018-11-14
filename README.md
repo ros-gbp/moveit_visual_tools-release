@@ -1,3 +1,26 @@
+## moveit_visual_tools (melodic) - 3.5.1-0
+
+The packages in the `moveit_visual_tools` repository were released into the `melodic` distro by running `/usr/bin/bloom-release moveit_visual_tools -t melodic -r melodic --edit` on `Wed, 14 Nov 2018 23:34:48 -0000`
+
+The `moveit_visual_tools` package was released.
+
+Version of package(s) in repository `moveit_visual_tools`:
+
+- upstream repository: https://github.com/ros-planning/moveit_visual_tools.git
+- release repository: https://github.com/PickNikRobotics/moveit_visual_tools-release.git
+- rosdistro version: `3.2.1-4`
+- old version: `3.2.1-4`
+- new version: `3.5.1-0`
+
+Versions of tools used:
+
+- bloom version: `0.6.8`
+- catkin_pkg version: `0.4.9`
+- rosdep version: `0.13.0`
+- rosdistro version: `0.7.0`
+- vcstools version: `0.1.40`
+
+
 ## moveit_visual_tools (melodic) - 3.2.1-4
 
 The packages in the `moveit_visual_tools` repository were released into the `melodic` distro by running `/usr/bin/bloom-release moveit_visual_tools -t melodic -r melodic` on `Thu, 06 Sep 2018 01:52:15 -0000`
