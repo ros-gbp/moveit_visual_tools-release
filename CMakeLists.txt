@@ -7,12 +7,12 @@ add_compile_options(-std=c++11)
 # Load catkin and all dependencies required for this package
 find_package(catkin REQUIRED COMPONENTS
   rviz_visual_tools
-  tf2_eigen
+  eigen_conversions
   geometry_msgs
   moveit_ros_planning
   moveit_core
   roscpp
-  tf2_ros
+  tf_conversions
   visualization_msgs
   graph_msgs
   std_msgs

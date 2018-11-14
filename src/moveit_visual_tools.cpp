@@ -47,10 +47,8 @@
 #include <moveit/macros/console_colors.h>
 
 // Conversions
-#include <tf2_eigen/tf2_eigen.h>
-
-// Transforms
-#include <tf2_ros/transform_listener.h>
+#include <tf_conversions/tf_eigen.h>
+#include <eigen_conversions/eigen_msg.h>
 
 // Shape tools
 #include <geometric_shapes/solid_primitive_dims.h>
@@ -92,12 +90,11 @@ bool MoveItVisualTools::loadPlanningSceneMonitor()
   }
   ROS_DEBUG_STREAM_NAMED(name_, "Loading planning scene monitor");
 
-  // Create tf transform buffer and listener
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer = std::make_shared<tf2_ros::Buffer>();
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+  // Create tf transformer
+  boost::shared_ptr<tf::TransformListener> tf;
 
   // Regular version b/c the other one causes problems with recognizing end effectors
-  psm_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf_buffer, "visual_tools_scene"));
+  psm_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf, "visual_tools_scene"));
 
   ros::spinOnce();
   ros::Duration(0.1).sleep();
@@ -188,8 +185,10 @@ bool MoveItVisualTools::moveCollisionObject(const geometry_msgs::Pose& pose, con
 
 bool MoveItVisualTools::triggerPlanningSceneUpdate()
 {
-  // TODO(davetcoleman): perhaps switch to using the service call?
-  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_GEOMETRY);
+  // Note in ROS Melodic we've switched to only UPDATE_GEOMETRY
+  // see https://github.com/ros-planning/moveit_visual_tools/pull/29
+  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
+  // getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_GEOMETRY);
 
   return true;
 }
@@ -460,7 +459,7 @@ bool MoveItVisualTools::publishAnimatedGrasp(const moveit_msgs::Grasp& grasp,
   }
 
   Eigen::Affine3d grasp_pose_eigen;
-  tf2::fromMsg(grasp_pose, grasp_pose_eigen);
+  tf::poseMsgToEigen(grasp_pose, grasp_pose_eigen);
 
   // Pre-grasp pose variables
   geometry_msgs::Pose pre_grasp_pose;
@@ -513,7 +512,7 @@ bool MoveItVisualTools::publishAnimatedGrasp(const moveit_msgs::Grasp& grasp,
     pre_grasp_pose_eigen.translation() += pre_grasp_approach_direction_local;
 
     // Convert eigen pre-grasp position back to regular message
-    pre_grasp_pose = tf2::toMsg(pre_grasp_pose_eigen);
+    tf::poseEigenToMsg(pre_grasp_pose_eigen, pre_grasp_pose);
 
     // publishArrow(pre_grasp_pose, moveit_visual_tools::BLUE);
     publishEEMarkers(pre_grasp_pose, ee_jmg);
@@ -691,7 +690,8 @@ bool MoveItVisualTools::publishCollisionCuboid(const geometry_msgs::Point& point
 bool MoveItVisualTools::publishCollisionCuboid(const Eigen::Affine3d& pose, double width, double depth, double height,
                                                const std::string& name, const rviz_visual_tools::colors& color)
 {
-  geometry_msgs::Pose pose_msg = tf2::toMsg(pose);
+  geometry_msgs::Pose pose_msg;
+  tf::poseEigenToMsg(pose, pose_msg);
   return publishCollisionCuboid(pose_msg, width, depth, height, name, color);
 }
 
