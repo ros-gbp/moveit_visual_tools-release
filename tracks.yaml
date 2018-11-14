@@ -137,5 +137,5 @@ tracks:
     release_tag: :{version}
     ros_distro: melodic
     vcs_type: git
-    vcs_uri: https://github.com/PickNikRobotics/moveit_visual_tools.git
+    vcs_uri: https://github.com/ros-planning/moveit_visual_tools.git
     version: :{auto}
