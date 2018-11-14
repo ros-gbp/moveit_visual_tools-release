@@ -2,6 +2,60 @@
 Changelog for package moveit_visual_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+3.5.1 (2018-11-14)
+------------------
+* Adding trigger call to animations when batch_publishing_enabled\_ is enabled (`#36 <https://github.com/ros-planning/moveit_visual_tools/issues/36>`_)
+* Contributors: Mike Lautman
+
+3.5.0 (2018-09-05)
+------------------
+* Add Markdown ROS Buildfarm badges for Melodic
+* Fixing melodic branch with tf2 updates (`#34 <https://github.com/ros-planning/moveit_visual_tools/issues/34>`_)
+* Additional visualization (`#31 <https://github.com/ros-planning/moveit_visual_tools/issues/31>`_)
+  * adding a visualization for publishing a box with width, height, and depth
+  * adding additional publishCollisionCuboid method overloads
+  * changing x,y,z to width, depth, height
+* Fixup CMakeLists and package.xml (`#30 <https://github.com/ros-planning/moveit_visual_tools/issues/30>`_)
+* Triggering UPDATE_GEOMETRY is sufficient, dont spinOnce
+  - triggering UPDATE_SCENE leads to sending a full planning scene including all meshes. For all use-cases in this lib UPDATE_GEOMETRY is sufficient and sends only diffs
+  - calling ros::spinOnce() in random places messes up the event queue (e.g. joint state updates being processed in gui thread instead of the async spinner thread)
+* Fix API compatibility by providing a default empty list of end-effector joints
+* Allow setting joint values for end-effector marker
+  currently end-effector markers are based on the default robot state (ie all zero),
+  this allows passing a vector of doubles for all active joint in the end-effector group
+  Passing a new set of joint values will invalidate the cache but for our use-case this is
+  neglectible and could be optimized later
+* Moved boost::shared_ptr to std for tf2
+* Converted to use tf2 moveit interfaces
+* Fix broken CI for Melodic
+* Fix Continuous Integration
+* Contributors: Dave Coleman, Ian McMahon, Mike Lautman, Simon Schmeisser
+
+3.4.0 (2017-12-27)
+------------------
+* Apply current MoveIt clang-format
+* Various improvements needed while finishing planning thesis
+* Fix greater than/less than issue in clearance check
+* Ability to specify clearance for random state
+* Small threading fixes
+* imarker: Fix setToRandomState()
+  imarker: Switch to std::makeshared
+* Improve console output
+* Contributors: Dave Coleman, Mike Lautman
+
+3.3.0 (2017-06-20)
+------------------
+* Change error message to warning
+* Make planning scene monitor publicly exposed
+* Remove label from imarkers
+* Ability to move a collision object without removing it first
+* IMarkerRobotState: update imarkers location when setting robot state
+* IMarkerRobotState: Added setRobotState()
+* IMarkerRobotState: Renamed function publishRobotState()
+* MoveItVisualTools: renamed variable to psm\_
+* Expose verbose collision checking
+* Contributors: Dave Coleman
+
 3.2.1 (2016-11-02)
 ------------------
 * New publishTrajectoryPath() functions
