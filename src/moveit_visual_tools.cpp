@@ -47,8 +47,10 @@
 #include <moveit/macros/console_colors.h>
 
 // Conversions
-#include <tf_conversions/tf_eigen.h>
-#include <eigen_conversions/eigen_msg.h>
+#include <tf2_eigen/tf2_eigen.h>
+
+// Transforms
+#include <tf2_ros/transform_listener.h>
 
 // Shape tools
 #include <geometric_shapes/solid_primitive_dims.h>
@@ -65,9 +67,9 @@
 namespace moveit_visual_tools
 {
 MoveItVisualTools::MoveItVisualTools(const std::string& base_frame, const std::string& marker_topic,
-                                     planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor)
+                                     planning_scene_monitor::PlanningSceneMonitorPtr psm)
   : RvizVisualTools::RvizVisualTools(base_frame, marker_topic)
-  , planning_scene_monitor_(planning_scene_monitor)
+  , psm_(psm)
   , robot_state_topic_(DISPLAY_ROBOT_STATE_TOPIC)
   , planning_scene_topic_(PLANNING_SCENE_TOPIC)
 {
@@ -82,7 +84,7 @@ MoveItVisualTools::MoveItVisualTools(const std::string& base_frame, const std::s
 bool MoveItVisualTools::loadPlanningSceneMonitor()
 {
   // Check if we already have one
-  if (planning_scene_monitor_)
+  if (psm_)
   {
     ROS_WARN_STREAM_NAMED(name_, "Will not load a new planning scene monitor when one has "
                                  "already been set for Visual Tools");
@@ -90,28 +92,30 @@ bool MoveItVisualTools::loadPlanningSceneMonitor()
   }
   ROS_DEBUG_STREAM_NAMED(name_, "Loading planning scene monitor");
 
-  // Create tf transformer
-  boost::shared_ptr<tf::TransformListener> tf;
+  // Create tf transform buffer and listener
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer = std::make_shared<tf2_ros::Buffer>();
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
   // Regular version b/c the other one causes problems with recognizing end effectors
-  planning_scene_monitor_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf, "visual_tools_"
-                                                                                                        "scene"));
+  psm_.reset(new planning_scene_monitor::PlanningSceneMonitor(ROBOT_DESCRIPTION, tf_buffer, "visual_tools_scene"));
+
   ros::spinOnce();
   ros::Duration(0.1).sleep();
   ros::spinOnce();
 
-  if (planning_scene_monitor_->getPlanningScene())
+  if (psm_->getPlanningScene())
   {
     // Optional monitors to start:
-    // planning_scene_monitor_->startWorldGeometryMonitor();
-    // planning_scene_monitor_->startSceneMonitor("/move_group/monitored_planning_scene");
-    // planning_scene_monitor_->startStateMonitor("/joint_states", "/attached_collision_object");
+    // psm_->startWorldGeometryMonitor();
+    // psm_->startSceneMonitor("/move_group/monitored_planning_scene");
+    // psm_->startStateMonitor("/joint_states", "/attached_collision_object");
 
-    planning_scene_monitor_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
-                                                          planning_scene_topic_);
+    psm_->startPublishingPlanningScene(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE,
+                                       planning_scene_topic_);
     ROS_DEBUG_STREAM_NAMED(name_, "Publishing planning scene on " << planning_scene_topic_);
 
-    planning_scene_monitor_->getPlanningScene()->setName("visual_tools_scene");
+    planning_scene_monitor::LockedPlanningSceneRW planning_scene(psm_);
+    planning_scene->setName("visual_tools_scene");
   }
   else
   {
@@ -128,7 +132,7 @@ bool MoveItVisualTools::processCollisionObjectMsg(const moveit_msgs::CollisionOb
   // Apply command directly to planning scene to avoid a ROS msg call
   {
     planning_scene_monitor::LockedPlanningSceneRW scene(getPlanningSceneMonitor());
-    scene->getCurrentStateNonConst().update();  // hack to prevent bad transforms
+    scene->getCurrentStateNonConst().update();  // TODO: remove hack to prevent bad transforms
     scene->processCollisionObjectMsg(msg);
     scene->setObjectColor(msg.id, getColor(color));
   }
@@ -159,12 +163,34 @@ bool MoveItVisualTools::processAttachedCollisionObjectMsg(const moveit_msgs::Att
   return true;
 }
 
+bool MoveItVisualTools::moveCollisionObject(const Eigen::Affine3d& pose, const std::string& name,
+                                            const rviz_visual_tools::colors& color)
+{
+  return moveCollisionObject(convertPose(pose), name, color);
+}
+
+bool MoveItVisualTools::moveCollisionObject(const geometry_msgs::Pose& pose, const std::string& name,
+                                            const rviz_visual_tools::colors& color)
+{
+  moveit_msgs::CollisionObject collision_obj;
+  collision_obj.header.stamp = ros::Time::now();
+  collision_obj.header.frame_id = base_frame_;
+  collision_obj.id = name;
+  collision_obj.operation = moveit_msgs::CollisionObject::MOVE;
+
+  collision_obj.primitive_poses.resize(1);
+  collision_obj.primitive_poses[0] = pose;
+
+  // ROS_INFO_STREAM_NAMED(name_,"CollisionObject: \n " << collision_obj);
+  // ROS_DEBUG_STREAM_NAMED(name_,"Published collision object " << name);
+  return processCollisionObjectMsg(collision_obj, color);
+}
+
 bool MoveItVisualTools::triggerPlanningSceneUpdate()
 {
   // TODO(davetcoleman): perhaps switch to using the service call?
-  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_SCENE);
-  // getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_GEOMETRY);
-  ros::spinOnce();
+  getPlanningSceneMonitor()->triggerSceneUpdateEvent(planning_scene_monitor::PlanningSceneMonitor::UPDATE_GEOMETRY);
+
   return true;
 }
 
@@ -177,8 +203,7 @@ bool MoveItVisualTools::loadSharedRobotState()
     if (!robot_model_)
     {
       // Fall back on using planning scene monitor.
-      planning_scene_monitor::PlanningSceneMonitorPtr psm = getPlanningSceneMonitor();
-      robot_model_ = psm->getRobotModel();
+      robot_model_ = getPlanningSceneMonitor()->getRobotModel();
     }
     shared_robot_state_.reset(new robot_state::RobotState(robot_model_));
 
@@ -211,7 +236,8 @@ moveit::core::RobotModelConstPtr MoveItVisualTools::getRobotModel()
   return shared_robot_state_->getRobotModel();
 }
 
-bool MoveItVisualTools::loadEEMarker(const robot_model::JointModelGroup* ee_jmg)
+bool MoveItVisualTools::loadEEMarker(const robot_model::JointModelGroup* ee_jmg,
+                                     const std::vector<double>& ee_joint_pos)
 {
   // Get joint state group
   if (ee_jmg == NULL)  // make sure EE_GROUP exists
@@ -225,9 +251,25 @@ bool MoveItVisualTools::loadEEMarker(const robot_model::JointModelGroup* ee_jmg)
   shared_robot_state_->setToDefaultValues();
   shared_robot_state_->update();
 
+  if (ee_joint_pos.size() > 0)
+  {
+    if (ee_joint_pos.size() != ee_jmg->getActiveJointModels().size())
+    {
+      ROS_ERROR_STREAM_NAMED(name_, "The number of joint positions given ("
+                                        << ee_joint_pos.size() << ") does not match the number of active joints in "
+                                        << ee_jmg->getName() << "(" << ee_jmg->getActiveJointModels().size() << ")");
+      return false;
+    }
+    shared_robot_state_->setJointGroupPositions(ee_jmg, ee_joint_pos);
+    shared_robot_state_->update(true);
+  }
+
   // Clear old EE markers and EE poses
   ee_markers_map_[ee_jmg].markers.clear();
   ee_poses_map_[ee_jmg].clear();
+
+  // Remember joint state
+  ee_joint_pos_map_[ee_jmg] = ee_joint_pos;
 
   // Keep track of how many unique markers we have between different EEs
   static std::size_t marker_id_offset = 0;
@@ -313,12 +355,14 @@ void MoveItVisualTools::loadRobotStatePub(const std::string& robot_state_topic, 
 }
 
 bool MoveItVisualTools::publishEEMarkers(const geometry_msgs::Pose& pose, const robot_model::JointModelGroup* ee_jmg,
+                                         const std::vector<double>& ee_joint_pos,
                                          const rviz_visual_tools::colors& color, const std::string& ns)
 {
   // Check if we have not loaded the EE markers
-  if (ee_markers_map_[ee_jmg].markers.empty() || ee_poses_map_[ee_jmg].empty())
+  if (ee_markers_map_[ee_jmg].markers.empty() || ee_poses_map_[ee_jmg].empty() ||
+      ee_joint_pos_map_[ee_jmg] != ee_joint_pos)
   {
-    if (!loadEEMarker(ee_jmg))
+    if (!loadEEMarker(ee_jmg, ee_joint_pos))
     {
       ROS_ERROR_STREAM_NAMED(name_, "Unable to publish EE marker, unable to load EE markers");
       return false;
@@ -395,8 +439,7 @@ bool MoveItVisualTools::publishAnimatedGrasps(const std::vector<moveit_msgs::Gra
       break;
 
     publishAnimatedGrasp(possible_grasps[i], ee_jmg, animate_speed);
-
-    ros::Duration(0.1).sleep();
+    ros::Duration(animate_speed).sleep();
   }
 
   return true;
@@ -417,7 +460,7 @@ bool MoveItVisualTools::publishAnimatedGrasp(const moveit_msgs::Grasp& grasp,
   }
 
   Eigen::Affine3d grasp_pose_eigen;
-  tf::poseMsgToEigen(grasp_pose, grasp_pose_eigen);
+  tf2::fromMsg(grasp_pose, grasp_pose_eigen);
 
   // Pre-grasp pose variables
   geometry_msgs::Pose pre_grasp_pose;
@@ -470,11 +513,12 @@ bool MoveItVisualTools::publishAnimatedGrasp(const moveit_msgs::Grasp& grasp,
     pre_grasp_pose_eigen.translation() += pre_grasp_approach_direction_local;
 
     // Convert eigen pre-grasp position back to regular message
-    tf::poseEigenToMsg(pre_grasp_pose_eigen, pre_grasp_pose);
+    pre_grasp_pose = tf2::toMsg(pre_grasp_pose_eigen);
 
     // publishArrow(pre_grasp_pose, moveit_visual_tools::BLUE);
     publishEEMarkers(pre_grasp_pose, ee_jmg);
-
+    if (batch_publishing_enabled_)
+      trigger();
     ros::Duration(animate_speed).sleep();
 
     // Pause more at initial pose for debugging purposes
@@ -641,6 +685,47 @@ bool MoveItVisualTools::publishCollisionCuboid(const geometry_msgs::Point& point
     collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = rviz_visual_tools::SMALL_SCALE;
 
   // ROS_INFO_STREAM_NAMED(name_,"CollisionObject: \n " << collision_obj);
+  return processCollisionObjectMsg(collision_obj, color);
+}
+
+bool MoveItVisualTools::publishCollisionCuboid(const Eigen::Affine3d& pose, double width, double depth, double height,
+                                               const std::string& name, const rviz_visual_tools::colors& color)
+{
+  geometry_msgs::Pose pose_msg = tf2::toMsg(pose);
+  return publishCollisionCuboid(pose_msg, width, depth, height, name, color);
+}
+
+bool MoveItVisualTools::publishCollisionCuboid(const geometry_msgs::Pose& pose, double width, double depth,
+                                               double height, const std::string& name,
+                                               const rviz_visual_tools::colors& color)
+{
+  moveit_msgs::CollisionObject collision_obj;
+  collision_obj.header.stamp = ros::Time::now();
+  collision_obj.header.frame_id = base_frame_;
+  collision_obj.id = name;
+  collision_obj.operation = moveit_msgs::CollisionObject::ADD;
+
+  // Calculate center pose
+  collision_obj.primitive_poses.resize(1);
+  collision_obj.primitive_poses[0] = pose;
+
+  // Calculate scale
+  collision_obj.primitives.resize(1);
+  collision_obj.primitives[0].type = shape_msgs::SolidPrimitive::BOX;
+  collision_obj.primitives[0].dimensions.resize(
+      geometric_shapes::SolidPrimitiveDimCount<shape_msgs::SolidPrimitive::BOX>::value);
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = width;
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = depth;
+  collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = height;
+
+  // Prevent scale from being zero
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X])
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_X] = rviz_visual_tools::SMALL_SCALE;
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y])
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Y] = rviz_visual_tools::SMALL_SCALE;
+  if (!collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z])
+    collision_obj.primitives[0].dimensions[shape_msgs::SolidPrimitive::BOX_Z] = rviz_visual_tools::SMALL_SCALE;
+
   return processCollisionObjectMsg(collision_obj, color);
 }
 
@@ -1446,14 +1531,14 @@ void MoveItVisualTools::showJointLimits(robot_state::RobotStatePtr robot_state)
 
 planning_scene_monitor::PlanningSceneMonitorPtr MoveItVisualTools::getPlanningSceneMonitor()
 {
-  if (!planning_scene_monitor_)
+  if (!psm_)
   {
     ROS_INFO_STREAM_NAMED(name_, "No planning scene passed into moveit_visual_tools, creating one.");
     loadPlanningSceneMonitor();
     ros::spinOnce();
-    ros::Duration(1).sleep();
+    ros::Duration(1).sleep();  // TODO: is this necessary?
   }
-  return planning_scene_monitor_;
+  return psm_;
 }
 
 bool MoveItVisualTools::checkForVirtualJoint(const moveit::core::RobotState& robot_state)
@@ -1465,8 +1550,8 @@ bool MoveItVisualTools::checkForVirtualJoint(const moveit::core::RobotState& rob
   {
     ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Joint '" << VJOINT_NAME << "' does not exist.");
     const std::vector<std::string>& names = robot_state.getRobotModel()->getJointModelNames();
-    ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Available names:");
-    std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
+    // ROS_DEBUG_STREAM_NAMED("moveit_visual_tools", "Available names:");
+    // std::copy(names.begin(), names.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
 
     return false;
   }
@@ -1495,7 +1580,8 @@ bool MoveItVisualTools::applyVirtualJointTransform(moveit::core::RobotState& rob
   // Error check
   if (!checkForVirtualJoint(robot_state))
   {
-    ROS_ERROR_STREAM_NAMED("moveit_visual_tools", "Unable to apply virtual joint transform");
+    ROS_WARN_STREAM_NAMED("moveit_visual_tools", "Unable to apply virtual joint transform, hideRobot() functionality "
+                                                 "is disabled");
     return false;
   }
 
