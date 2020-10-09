@@ -43,12 +43,66 @@
 #include <string>
 
 // Conversions
-#include <eigen_conversions/eigen_msg.h>
-#include <tf_conversions/tf_eigen.h>
+#include <tf2_eigen/tf2_eigen.h>
 
 // this package
 #include <moveit_visual_tools/imarker_robot_state.h>
 #include <moveit_visual_tools/imarker_end_effector.h>
+
+namespace
+{
+bool isStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
+                  const moveit_visual_tools::MoveItVisualToolsPtr& visual_tools, moveit::core::RobotState* robot_state,
+                  const moveit::core::JointModelGroup* group, const double* ik_solution)
+{
+  // Apply IK solution to robot state
+  robot_state->setJointGroupPositions(group, ik_solution);
+  robot_state->update();
+
+#if 0  // Ensure there are objects in the planning scene
+  const std::size_t num_collision_objects = planning_scene->getCollisionEnv()->getWorld()->size();
+  if (num_collision_objects == 0)
+  {
+    ROS_ERROR_STREAM_NAMED("cart_path_planner", "No collision objects exist in world, you need at least a table "
+                           "modeled for the controller to work");
+    ROS_ERROR_STREAM_NAMED("cart_path_planner", "To fix this, relaunch the teleop/head tracking/whatever MoveIt "
+                           "node to publish the collision objects");
+    return false;
+  }
+#endif
+
+  if (!planning_scene)
+  {
+    ROS_ERROR_STREAM_NAMED("cart_path_planner", "No planning scene provided");
+    return false;
+  }
+  if (only_check_self_collision)
+  {
+    // No easy API exists for only checking self-collision, so we do it here.
+    // TODO(davetcoleman): move this into planning_scene.cpp
+    collision_detection::CollisionRequest req;
+    req.verbose = verbose;
+    req.group_name = group->getName();
+    collision_detection::CollisionResult res;
+    planning_scene->checkSelfCollision(req, res, *robot_state);
+    if (!res.collision)
+      return true;  // not in collision
+  }
+  else if (!planning_scene->isStateColliding(*robot_state, group->getName()))
+    return true;  // not in collision
+
+  // Display more info about the collision
+  if (verbose)
+  {
+    visual_tools->publishRobotState(*robot_state, rviz_visual_tools::RED);
+    planning_scene->isStateColliding(*robot_state, group->getName(), true);
+    visual_tools->publishContactPoints(*robot_state, planning_scene);
+  }
+  ROS_WARN_STREAM_THROTTLE_NAMED(2.0, "cart_path_planner", "Collision");
+  return false;
+}
+
+}  // namespace
 
 namespace moveit_visual_tools
 {
@@ -56,12 +110,12 @@ IMarkerEndEffector::IMarkerEndEffector(IMarkerRobotState* imarker_parent, const 
                                        ArmData arm_data, rviz_visual_tools::colors color)
   : name_(imarker_name)
   , imarker_parent_(imarker_parent)
+  , imarker_state_(imarker_parent_->imarker_state_)
   , psm_(imarker_parent_->psm_)
+  , visual_tools_(imarker_parent_->visual_tools_)
   , arm_data_(arm_data)
   , color_(color)
   , imarker_server_(imarker_parent_->imarker_server_)
-  , imarker_state_(imarker_parent_->imarker_state_)
-  , visual_tools_(imarker_parent_->visual_tools_)
 {
   // Get pose from robot state
   imarker_pose_ = imarker_state_->getGlobalLinkTransform(arm_data_.ee_link_);
@@ -108,7 +162,7 @@ void IMarkerEndEffector::iMarkerCallback(const visualization_msgs::InteractiveMa
   // Only allow one feedback to be processed at a time
   {
     // boost::unique_lock<boost::mutex> scoped_lock(imarker_mutex_);
-    if (imarker_ready_to_process_ == false)
+    if (!imarker_ready_to_process_)
     {
       return;
     }
@@ -117,7 +171,7 @@ void IMarkerEndEffector::iMarkerCallback(const visualization_msgs::InteractiveMa
 
   // Convert
   Eigen::Isometry3d robot_ee_pose;
-  tf::poseMsgToEigen(feedback->pose, robot_ee_pose);
+  tf2::fromMsg(feedback->pose, robot_ee_pose);
 
   // Update robot
   solveIK(robot_ee_pose);
@@ -136,7 +190,6 @@ void IMarkerEndEffector::iMarkerCallback(const visualization_msgs::InteractiveMa
 void IMarkerEndEffector::solveIK(Eigen::Isometry3d& pose)
 {
   // Cartesian settings
-  const std::size_t attempts = 2;
   const double timeout = 1.0 / 30.0;  // 30 fps
 
   // Optionally collision check
@@ -151,7 +204,7 @@ void IMarkerEndEffector::solveIK(Eigen::Isometry3d& pose)
   }
 
   // Attempt to set robot to new pose
-  if (imarker_state_->setFromIK(arm_data_.jmg_, pose, arm_data_.ee_link_->getName(), attempts, timeout, constraint_fn))
+  if (imarker_state_->setFromIK(arm_data_.jmg_, pose, arm_data_.ee_link_->getName(), timeout, constraint_fn))
   {
     imarker_state_->update();
     // if (psm_->getPlanningScene()->isStateValid(*imarker_state_))
@@ -170,14 +223,13 @@ void IMarkerEndEffector::solveIK(Eigen::Isometry3d& pose)
 void IMarkerEndEffector::initializeInteractiveMarkers()
 {
   // Convert
-  geometry_msgs::Pose pose_msg;
-  tf::poseEigenToMsg(imarker_pose_, pose_msg);
+  const geometry_msgs::Pose pose_msg = tf2::toMsg(imarker_pose_);
 
   // marker
   make6DofMarker(pose_msg);
 }
 
-void IMarkerEndEffector::updateIMarkerPose(const Eigen::Isometry3d& pose)
+void IMarkerEndEffector::updateIMarkerPose(const Eigen::Isometry3d& /*pose*/)
 {
   // Move marker to tip of fingers
   // imarker_pose_ = pose * imarker_offset_.inverse();
@@ -187,8 +239,7 @@ void IMarkerEndEffector::updateIMarkerPose(const Eigen::Isometry3d& pose)
 void IMarkerEndEffector::sendUpdatedIMarkerPose()
 {
   // Convert
-  geometry_msgs::Pose pose_msg;
-  tf::poseEigenToMsg(imarker_pose_, pose_msg);
+  const geometry_msgs::Pose pose_msg = tf2::toMsg(imarker_pose_);
 
   imarker_server_->setPose(int_marker_.name, pose_msg);
   imarker_server_->applyChanges();
@@ -273,60 +324,3 @@ IMarkerEndEffector::makeBoxControl(visualization_msgs::InteractiveMarker& msg)
 }
 
 }  // namespace moveit_visual_tools
-
-namespace
-{
-bool isStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
-                  moveit_visual_tools::MoveItVisualToolsPtr visual_tools, moveit::core::RobotState* robot_state,
-                  const moveit::core::JointModelGroup* group, const double* ik_solution)
-{
-  // Apply IK solution to robot state
-  robot_state->setJointGroupPositions(group, ik_solution);
-  robot_state->update();
-
-  // Ensure there are objects in the planning scene
-  if (false)
-  {
-    const std::size_t num_collision_objects = planning_scene->getCollisionWorld()->getWorld()->size();
-    if (num_collision_objects == 0)
-    {
-      ROS_ERROR_STREAM_NAMED("cart_path_planner", "No collision objects exist in world, you need at least a table "
-                                                  "modeled for the controller to work");
-      ROS_ERROR_STREAM_NAMED("cart_path_planner", "To fix this, relaunch the teleop/head tracking/whatever MoveIt! "
-                                                  "node to publish the collision objects");
-      return false;
-    }
-  }
-
-  if (!planning_scene)
-  {
-    ROS_ERROR_STREAM_NAMED("cart_path_planner", "No planning scene provided");
-    return false;
-  }
-  if (only_check_self_collision)
-  {
-    // No easy API exists for only checking self-collision, so we do it here.
-    // TODO(davetcoleman): move this into planning_scene.cpp
-    collision_detection::CollisionRequest req;
-    req.verbose = verbose;
-    req.group_name = group->getName();
-    collision_detection::CollisionResult res;
-    planning_scene->checkSelfCollision(req, res, *robot_state);
-    if (!res.collision)
-      return true;  // not in collision
-  }
-  else if (!planning_scene->isStateColliding(*robot_state, group->getName()))
-    return true;  // not in collision
-
-  // Display more info about the collision
-  if (verbose)
-  {
-    visual_tools->publishRobotState(*robot_state, rviz_visual_tools::RED);
-    planning_scene->isStateColliding(*robot_state, group->getName(), true);
-    visual_tools->publishContactPoints(*robot_state, planning_scene);
-  }
-  ROS_WARN_STREAM_THROTTLE_NAMED(2.0, "cart_path_planner", "Collision");
-  return false;
-}
-
-}  // end annonymous namespace

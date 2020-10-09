@@ -55,12 +55,14 @@
 
 // C++
 #include <string>
+#include <utility>
+
 #include <vector>
 
 namespace moveit_visual_tools
 {
-using visualization_msgs::InteractiveMarkerFeedback;
 using visualization_msgs::InteractiveMarkerControl;
+using visualization_msgs::InteractiveMarkerFeedback;
 
 typedef std::function<void(const visualization_msgs::InteractiveMarkerFeedbackConstPtr&, const Eigen::Isometry3d&)>
     IMarkerCallback;
@@ -116,7 +118,7 @@ public:
 
   void setIMarkerCallback(IMarkerCallback callback)
   {
-    imarker_callback_ = callback;
+    imarker_callback_ = std::move(callback);
   }
 
   const moveit::core::LinkModel* getEELink()
@@ -165,19 +167,14 @@ private:
 
   // Hook to parent class
   IMarkerCallback imarker_callback_;
+
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };  // end class
 
 // Create std pointers for this class
 typedef std::shared_ptr<IMarkerEndEffector> IMarkerEndEffectorPtr;
 typedef std::shared_ptr<const IMarkerEndEffector> IMarkerEndEffectorConstPtr;
 }  // namespace moveit_visual_tools
-
-namespace
-{
-/** \brief Collision checking handle for IK solvers */
-bool isStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
-                  moveit_visual_tools::MoveItVisualToolsPtr visual_tools_, robot_state::RobotState* state,
-                  const robot_state::JointModelGroup* group, const double* ik_solution);
-}
 
 #endif  // MOVEIT_VISUAL_TOOLS_IMARKER_END_EFFECTOR_H

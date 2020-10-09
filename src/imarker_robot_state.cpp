@@ -46,18 +46,82 @@
 
 // C++
 #include <string>
+#include <utility>
 #include <vector>
+
+namespace
+{
+bool isIKStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
+                    const moveit_visual_tools::MoveItVisualToolsPtr& visual_tools,
+                    moveit::core::RobotState* robot_state, const moveit::core::JointModelGroup* group,
+                    const double* ik_solution)
+{
+  // Apply IK solution to robot state
+  robot_state->setJointGroupPositions(group, ik_solution);
+  robot_state->update();
+
+#if 0  // Ensure there are objects in the planning scene
+  const std::size_t num_collision_objects = planning_scene->getCollisionEnv()->getWorld()->size();
+  if (num_collision_objects == 0)
+  {
+    ROS_ERROR_STREAM_NAMED("imarker_robot_state", "No collision objects exist in world, you need at least a table "
+                           "modeled for the controller to work");
+    ROS_ERROR_STREAM_NAMED("imarker_robot_state", "To fix this, relaunch the teleop/head tracking/whatever MoveIt "
+                           "node to publish the collision objects");
+    return false;
+  }
+#endif
+
+  if (!planning_scene)
+  {
+    ROS_ERROR_STREAM_NAMED("imarker_robot_state", "No planning scene provided");
+    return false;
+  }
+  if (only_check_self_collision)
+  {
+    // No easy API exists for only checking self-collision, so we do it here.
+    // TODO(davetcoleman): move this into planning_scene.cpp
+    collision_detection::CollisionRequest req;
+    req.verbose = verbose;
+    req.group_name = group->getName();
+    collision_detection::CollisionResult res;
+    planning_scene->checkSelfCollision(req, res, *robot_state);
+    if (!res.collision)
+      return true;  // not in collision
+  }
+  else if (!planning_scene->isStateColliding(*robot_state, group->getName()))
+    return true;  // not in collision
+
+  // Display more info about the collision
+  if (verbose)
+  {
+    visual_tools->publishRobotState(*robot_state, rviz_visual_tools::RED);
+    planning_scene->isStateColliding(*robot_state, group->getName(), true);
+    visual_tools->publishContactPoints(*robot_state, planning_scene);
+    ROS_WARN_STREAM_THROTTLE_NAMED(2.0, "imarker_robot_state", "Collision in IK CC callback");
+  }
+
+  return false;
+}
+
+}  // namespace
 
 namespace moveit_visual_tools
 {
 IMarkerRobotState::IMarkerRobotState(planning_scene_monitor::PlanningSceneMonitorPtr psm,
                                      const std::string& imarker_name, std::vector<ArmData> arm_datas,
                                      rviz_visual_tools::colors color, const std::string& package_path)
-  : name_(imarker_name), nh_("~"), psm_(psm), arm_datas_(arm_datas), color_(color), package_path_(package_path)
+  : name_(imarker_name)
+  , nh_("~")
+  , arm_datas_(std::move(arm_datas))
+  , psm_(std::move(psm))
+  , color_(color)
+  , package_path_(package_path)
 {
-  // Load Visual tools
-  visual_tools_ = std::make_shared<moveit_visual_tools::MoveItVisualTools>(
-      psm_->getRobotModel()->getModelFrame(), nh_.getNamespace() + "/" + imarker_name, psm_);
+  // Load Visual tools with respect to Eigen memory alignment
+  visual_tools_ = std::allocate_shared<moveit_visual_tools::MoveItVisualTools>(
+      Eigen::aligned_allocator<moveit_visual_tools::MoveItVisualTools>(), psm_->getRobotModel()->getModelFrame(),
+      nh_.getNamespace() + "/" + imarker_name, psm_);
 
   // visual_tools_->setPlanningSceneMonitor(psm_);
   visual_tools_->loadRobotStatePub(nh_.getNamespace() + "/imarker_" + imarker_name + "_state");
@@ -91,7 +155,9 @@ IMarkerRobotState::IMarkerRobotState(planning_scene_monitor::PlanningSceneMonito
     else
       eef_name = imarker_name + "_left";
 
-    end_effectors_[i] = std::make_shared<IMarkerEndEffector>(this, eef_name, arm_datas_[i], color);
+    // respect Eigen alignment
+    end_effectors_[i] = std::allocate_shared<IMarkerEndEffector>(Eigen::aligned_allocator<IMarkerEndEffector>(), this,
+                                                                 eef_name, arm_datas_[i], color);
 
     // Create map from eef name to object
     name_to_eef_[eef_name] = end_effectors_[i];
@@ -135,19 +201,19 @@ bool IMarkerRobotState::saveToFile()
   return true;
 }
 
-void IMarkerRobotState::setIMarkerCallback(IMarkerCallback callback)
+void IMarkerRobotState::setIMarkerCallback(const IMarkerCallback& callback)
 {
-  for (const IMarkerEndEffectorPtr ee : end_effectors_)
+  for (const IMarkerEndEffectorPtr& ee : end_effectors_)
     ee->setIMarkerCallback(callback);
 }
 
-void IMarkerRobotState::setRobotState(moveit::core::RobotStatePtr state)
+void IMarkerRobotState::setRobotState(const moveit::core::RobotStatePtr& state)
 {
   // Do a copy
   *imarker_state_ = *state;
 
   // Update the imarkers
-  for (IMarkerEndEffectorPtr ee : end_effectors_)
+  for (const IMarkerEndEffectorPtr& ee : end_effectors_)
     ee->setPoseFromRobotState();
 }
 
@@ -212,8 +278,8 @@ bool IMarkerRobotState::setToRandomState(double clearance)
       ROS_WARN_STREAM_NAMED(name_, "Taking long time to find valid random state");
   }
 
-  ROS_ERROR_STREAM_NAMED(name_, "Unable to find valid random robot state for imarker after " << MAX_ATTEMPTS << " attem"
-                                                                                                                "pts");
+  ROS_ERROR_STREAM_NAMED(name_,
+                         "Unable to find valid random robot state for imarker after " << MAX_ATTEMPTS << " attempts");
 
   return false;
 }
@@ -226,12 +292,7 @@ bool IMarkerRobotState::isStateValid(bool verbose)
   planning_scene_monitor::LockedPlanningSceneRO planning_scene(psm_);  // Read only lock
 
   // which planning group to collision check, "" is everything
-  if (planning_scene->isStateValid(*imarker_state_, "", verbose))
-  {
-    return true;
-  }
-
-  return false;
+  return planning_scene->isStateValid(*imarker_state_, "", verbose);
 }
 
 void IMarkerRobotState::publishRobotState()
@@ -272,7 +333,7 @@ bool IMarkerRobotState::getFilePath(std::string& file_path, const std::string& f
   return true;
 }
 
-bool IMarkerRobotState::setFromPoses(const EigenSTL::vector_Isometry3d poses,
+bool IMarkerRobotState::setFromPoses(const EigenSTL::vector_Isometry3d& poses,
                                      const moveit::core::JointModelGroup* group)
 {
   std::vector<std::string> tips;
@@ -281,29 +342,27 @@ bool IMarkerRobotState::setFromPoses(const EigenSTL::vector_Isometry3d poses,
 
   // ROS_DEBUG_STREAM_NAMED(name_, "First pose should be for joint model group: " << arm_datas_[0].ee_link_->getName());
 
-  const std::size_t attempts = 10;
   const double timeout = 1.0 / 30.0;  // 30 fps
 
   // Optionally collision check
   moveit::core::GroupStateValidityCallbackFn constraint_fn;
-  if (true)
-  {
-    bool collision_checking_verbose_ = false;
-    bool only_check_self_collision_ = false;
+#if 1
+  bool collision_checking_verbose_ = false;
+  bool only_check_self_collision_ = false;
 
-    // TODO(davetcoleman): this is currently not working, the locking seems to cause segfaults
-    // TODO(davetcoleman): change to std shared_ptr
-    boost::scoped_ptr<planning_scene_monitor::LockedPlanningSceneRO> ls;
-    ls.reset(new planning_scene_monitor::LockedPlanningSceneRO(psm_));
-    constraint_fn = boost::bind(&isIKStateValid, static_cast<const planning_scene::PlanningSceneConstPtr&>(*ls).get(),
-                                collision_checking_verbose_, only_check_self_collision_, visual_tools_, _1, _2, _3);
-  }
+  // TODO(davetcoleman): this is currently not working, the locking seems to cause segfaults
+  // TODO(davetcoleman): change to std shared_ptr
+  boost::scoped_ptr<planning_scene_monitor::LockedPlanningSceneRO> ls;
+  ls.reset(new planning_scene_monitor::LockedPlanningSceneRO(psm_));
+  constraint_fn = boost::bind(&isIKStateValid, static_cast<const planning_scene::PlanningSceneConstPtr&>(*ls).get(),
+                              collision_checking_verbose_, only_check_self_collision_, visual_tools_, _1, _2, _3);
+#endif
 
   // Solve
   std::size_t outer_attempts = 20;
   for (std::size_t i = 0; i < outer_attempts; ++i)
   {
-    if (!imarker_state_->setFromIK(group, poses, tips, attempts, timeout, constraint_fn))
+    if (!imarker_state_->setFromIK(group, poses, tips, timeout, constraint_fn))
     {
       ROS_DEBUG_STREAM_NAMED(name_, "Failed to find dual arm pose, trying again");
 
@@ -318,7 +377,7 @@ bool IMarkerRobotState::setFromPoses(const EigenSTL::vector_Isometry3d poses,
       publishRobotState();
 
       // Update the imarkers
-      for (IMarkerEndEffectorPtr ee : end_effectors_)
+      for (const IMarkerEndEffectorPtr& ee : end_effectors_)
         ee->setPoseFromRobotState();
 
       return true;
@@ -330,61 +389,3 @@ bool IMarkerRobotState::setFromPoses(const EigenSTL::vector_Isometry3d poses,
 }
 
 }  // namespace moveit_visual_tools
-
-namespace
-{
-bool isIKStateValid(const planning_scene::PlanningScene* planning_scene, bool verbose, bool only_check_self_collision,
-                    moveit_visual_tools::MoveItVisualToolsPtr visual_tools, moveit::core::RobotState* robot_state,
-                    const moveit::core::JointModelGroup* group, const double* ik_solution)
-{
-  // Apply IK solution to robot state
-  robot_state->setJointGroupPositions(group, ik_solution);
-  robot_state->update();
-
-  // Ensure there are objects in the planning scene
-  if (false)
-  {
-    const std::size_t num_collision_objects = planning_scene->getCollisionWorld()->getWorld()->size();
-    if (num_collision_objects == 0)
-    {
-      ROS_ERROR_STREAM_NAMED("imarker_robot_state", "No collision objects exist in world, you need at least a table "
-                                                    "modeled for the controller to work");
-      ROS_ERROR_STREAM_NAMED("imarker_robot_state", "To fix this, relaunch the teleop/head tracking/whatever MoveIt! "
-                                                    "node to publish the collision objects");
-      return false;
-    }
-  }
-
-  if (!planning_scene)
-  {
-    ROS_ERROR_STREAM_NAMED("imarker_robot_state", "No planning scene provided");
-    return false;
-  }
-  if (only_check_self_collision)
-  {
-    // No easy API exists for only checking self-collision, so we do it here.
-    // TODO(davetcoleman): move this into planning_scene.cpp
-    collision_detection::CollisionRequest req;
-    req.verbose = verbose;
-    req.group_name = group->getName();
-    collision_detection::CollisionResult res;
-    planning_scene->checkSelfCollision(req, res, *robot_state);
-    if (!res.collision)
-      return true;  // not in collision
-  }
-  else if (!planning_scene->isStateColliding(*robot_state, group->getName()))
-    return true;  // not in collision
-
-  // Display more info about the collision
-  if (verbose)
-  {
-    visual_tools->publishRobotState(*robot_state, rviz_visual_tools::RED);
-    planning_scene->isStateColliding(*robot_state, group->getName(), true);
-    visual_tools->publishContactPoints(*robot_state, planning_scene);
-    ROS_WARN_STREAM_THROTTLE_NAMED(2.0, "imarker_robot_state", "Collision in IK CC callback");
-  }
-
-  return false;
-}
-
-}  // end annonymous namespace

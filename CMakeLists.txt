@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.0.2)
 project(moveit_visual_tools)
 
 # C++ 11 required for OMPL
@@ -29,6 +29,7 @@ catkin_package(
   LIBRARIES
     ${PROJECT_NAME}
   CATKIN_DEPENDS
+    roscpp
     rviz_visual_tools
     moveit_ros_planning
     moveit_core
@@ -41,13 +42,10 @@ catkin_package(
 )
 
 ## Build
+include_directories(include)
 include_directories(SYSTEM
-  ${EIGEN3_INCLUDE_DIRS}
-)
-
-include_directories(
-  include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 # Visualization Tools Library
@@ -56,6 +54,7 @@ add_library(${PROJECT_NAME}
   src/imarker_robot_state.cpp
   src/imarker_end_effector.cpp
 )
+set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${${PROJECT_NAME}_VERSION})
 add_dependencies(${PROJECT_NAME} graph_msgs_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES} ${Boost_LIBRARIES}
