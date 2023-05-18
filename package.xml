@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>moveit_visual_tools</name>
-  <version>3.6.0</version>
+  <version>3.6.1</version>
   <description>Helper functions for displaying and debugging MoveIt data in Rviz via published markers</description>
 
   <maintainer email="dave@picknik.ai">Dave Coleman</maintainer>
@@ -9,7 +9,7 @@
   <license>BSD</license>
 
   <url type="website">https://github.com/ros-planning/moveit_visual_tools</url>
-  <url type="butracker">https://github.com/ros-planning/moveit_visual_tools/issues</url>
+  <url type="bugtracker">https://github.com/ros-planning/moveit_visual_tools/issues</url>
   <url type="repository">https://github.com/ros-planning/moveit_visual_tools/</url>
 
   <author email="dave@picknik.ai">Dave Coleman</author>
