@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(moveit_visual_tools)
 
-# C++ 11 required for OMPL
-add_compile_options(-std=c++11)
-
 # Load catkin and all dependencies required for this package
 find_package(catkin REQUIRED COMPONENTS
   rviz_visual_tools
@@ -54,6 +51,8 @@ add_library(${PROJECT_NAME}
   src/imarker_robot_state.cpp
   src/imarker_end_effector.cpp
 )
+target_compile_options(${PROJECT_NAME} PRIVATE
+  -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls)
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${${PROJECT_NAME}_VERSION})
 add_dependencies(${PROJECT_NAME} graph_msgs_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}
@@ -62,6 +61,8 @@ target_link_libraries(${PROJECT_NAME}
 
 # Demo executable
 add_executable(${PROJECT_NAME}_demo src/${PROJECT_NAME}_demo.cpp)
+target_compile_options(${PROJECT_NAME}_demo PRIVATE
+  -Wall -Wextra -Wwrite-strings -Wunreachable-code -Wpointer-arith -Wredundant-decls)
 target_link_libraries(${PROJECT_NAME}_demo
   ${catkin_LIBRARIES} ${PROJECT_NAME}
 )

@@ -200,7 +200,8 @@ void IMarkerEndEffector::solveIK(Eigen::Isometry3d& pose)
     boost::scoped_ptr<planning_scene_monitor::LockedPlanningSceneRO> ls;
     ls.reset(new planning_scene_monitor::LockedPlanningSceneRO(psm_));
     constraint_fn = boost::bind(&isStateValid, static_cast<const planning_scene::PlanningSceneConstPtr&>(*ls).get(),
-                                collision_checking_verbose_, only_check_self_collision_, visual_tools_, _1, _2, _3);
+                                collision_checking_verbose_, only_check_self_collision_, visual_tools_,
+                                boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3);
   }
 
   // Attempt to set robot to new pose
@@ -297,7 +298,8 @@ void IMarkerEndEffector::make6DofMarker(const geometry_msgs::Pose& pose)
   int_marker_.controls.push_back(control);
 
   imarker_server_->insert(int_marker_);
-  imarker_server_->setCallback(int_marker_.name, boost::bind(&IMarkerEndEffector::iMarkerCallback, this, _1));
+  imarker_server_->setCallback(int_marker_.name,
+                               boost::bind(&IMarkerEndEffector::iMarkerCallback, this, boost::placeholders::_1));
   // menu_handler_.apply(*imarker_server_, int_marker_.name);
 }
 
@@ -312,10 +314,7 @@ IMarkerEndEffector::makeBoxControl(visualization_msgs::InteractiveMarker& msg)
   marker.scale.x = msg.scale * 0.3;   // x direction
   marker.scale.y = msg.scale * 0.10;  // y direction
   marker.scale.z = msg.scale * 0.10;  // height
-  marker.color.r = 0.5;
-  marker.color.g = 0.5;
-  marker.color.b = 0.5;
-  marker.color.a = 1.0;
+  marker.color = visual_tools_->getColor(color_);
 
   control.markers.push_back(marker);
   msg.controls.push_back(control);
