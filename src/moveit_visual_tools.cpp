@@ -270,7 +270,7 @@ bool MoveItVisualTools::loadEEMarker(const moveit::core::JointModelGroup* ee_jmg
                                           << ee_jmg->getName() << "(" << ee_jmg->getActiveJointModels().size() << ")");
       return false;
     }
-    shared_robot_state_->setJointGroupPositions(ee_jmg, ee_joint_pos);
+    shared_robot_state_->setJointGroupActivePositions(ee_jmg, ee_joint_pos);
     shared_robot_state_->update(true);
   }
 
@@ -1145,6 +1145,9 @@ bool MoveItVisualTools::publishContactPoints(const collision_detection::Collisio
 bool MoveItVisualTools::publishTrajectoryPoint(const trajectory_msgs::JointTrajectoryPoint& trajectory_pt,
                                                const std::string& planning_group, double display_time)
 {
+  // Ensure robot_model_ is available
+  loadSharedRobotState();
+
   // Get joint state group
   const moveit::core::JointModelGroup* jmg = robot_model_->getJointModelGroup(planning_group);
 
@@ -1171,6 +1174,9 @@ bool MoveItVisualTools::publishTrajectoryPoint(const trajectory_msgs::JointTraje
 bool MoveItVisualTools::publishTrajectoryPath(const std::vector<moveit::core::RobotStatePtr>& trajectory,
                                               const moveit::core::JointModelGroup* jmg, double speed, bool blocking)
 {
+  // Ensure robot_model_ is available
+  loadSharedRobotState();
+
   // Copy the vector of RobotStates to a RobotTrajectory
   robot_trajectory::RobotTrajectoryPtr robot_trajectory(
       new robot_trajectory::RobotTrajectory(robot_model_, jmg->getName()));
@@ -1248,6 +1254,9 @@ bool MoveItVisualTools::publishTrajectoryPath(const moveit_msgs::RobotTrajectory
     ROS_WARN_STREAM_NAMED(LOGNAME, "Unable to publish trajectory path because trajectory has zero points");
     return false;
   }
+
+  // Ensure that the robot name is available.
+  loadSharedRobotState();
 
   // Create the message
   moveit_msgs::DisplayTrajectory display_trajectory_msg;
@@ -1361,8 +1370,14 @@ bool MoveItVisualTools::publishTrajectoryLine(const moveit_msgs::RobotTrajectory
                                               const moveit::core::JointModelGroup* arm_jmg,
                                               const rviz_visual_tools::colors& color)
 {
+  if (!arm_jmg)
+  {
+    ROS_FATAL_STREAM_NAMED(LOGNAME, "arm_jmg is NULL");
+    return false;
+  }
+
   std::vector<const moveit::core::LinkModel*> tips;
-  if (!arm_jmg->getEndEffectorTips(tips))
+  if (!arm_jmg->getEndEffectorTips(tips) || tips.empty())
   {
     ROS_ERROR_STREAM_NAMED(LOGNAME, "Unable to get end effector tips from jmg");
     return false;
@@ -1389,8 +1404,14 @@ bool MoveItVisualTools::publishTrajectoryLine(const robot_trajectory::RobotTraje
                                               const moveit::core::JointModelGroup* arm_jmg,
                                               const rviz_visual_tools::colors& color)
 {
+  if (!arm_jmg)
+  {
+    ROS_FATAL_STREAM_NAMED(LOGNAME, "arm_jmg is NULL");
+    return false;
+  }
+
   std::vector<const moveit::core::LinkModel*> tips;
-  if (!arm_jmg->getEndEffectorTips(tips))
+  if (!arm_jmg->getEndEffectorTips(tips) || tips.empty())
   {
     ROS_ERROR_STREAM_NAMED(LOGNAME, "Unable to get end effector tips from jmg");
     return false;
@@ -1546,7 +1567,7 @@ bool MoveItVisualTools::hideRobot()
 
 void MoveItVisualTools::showJointLimits(const moveit::core::RobotStatePtr& robot_state)
 {
-  const std::vector<const moveit::core::JointModel*>& joints = robot_model_->getActiveJointModels();
+  const std::vector<const moveit::core::JointModel*>& joints = robot_state->getRobotModel()->getActiveJointModels();
 
   // Loop through joints
   for (std::size_t i = 0; i < joints.size(); ++i)
